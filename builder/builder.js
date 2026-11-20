@@ -701,7 +701,7 @@
     name: `This window · ${innerWidth}×${innerHeight}`,
   });
   const blankDoc = () => ({
-    version: DOC_VERSION, title: "LCARS Page", cols: SCREENS[0].cols, rows: ROWS, cell: 6, textShapes: true, flow: "console", sound: true, nextId: 1, pieces: [],
+    version: DOC_VERSION, title: "LCARS Page", cols: SCREENS[0].cols, rows: ROWS, cell: 6, textShapes: true, flow: "console", sound: false, nextId: 1, pieces: [],
   });
 
   /*
@@ -948,7 +948,7 @@
     let title = from ? `${from.title} Copy` : prompt("Name the new page:", "New Page");
     if (title == null) return;
     title = title.trim() || "New Page";
-    const page = from ? structuredClone(from) : Object.assign(blankDoc(), { cols: doc.cols, rows: doc.rows, cell: doc.cell, textShapes: doc.textShapes, flow: doc.flow || "console", sound: doc.sound ?? true });
+    const page = from ? structuredClone(from) : Object.assign(blankDoc(), { cols: doc.cols, rows: doc.rows, cell: doc.cell, textShapes: doc.textShapes, flow: doc.flow || "console", sound: !!doc.sound });
     page.title = title;
     page.pid = `g${site.nextPage++}`;
     page.file = uniqueFile(fileSlug(title) || "page");
@@ -2246,7 +2246,7 @@
       return input;
     };
 
-    if (doc.sound) {
+    if (doc.sound && (doc.soundFile || playsPowerUp(doc))) {
       const name = doc.soundFile ? doc.soundFile.slice("sounds/".length) : "Power-up (built in)";
       const at = timeInput(0, name);
       at.disabled = true; // the opening is timed from it
@@ -2287,7 +2287,8 @@
     const actions = document.createElement("div");
     actions.className = "actions tight";
     actions.append(actionButton("Add sound", "orange", () => input.click()));
-    if (!doc.sound) actions.append(actionButton("Add power-up", "blue", () => { doc.sound = true; doc.soundFile = ""; rebuild(); }));
+    // The power-up belongs to the start screen alone.
+    if (isStartScreen() && !doc.sound) actions.append(actionButton("Add power-up", "blue", () => { doc.sound = true; doc.soundFile = ""; rebuild(); }));
     actions.append(input);
     out.push(actions);
     return out;
@@ -2795,7 +2796,8 @@
   function flowAttrs(page, url = (src) => src) {
     if (!page.flow || page.flow === "none") return "";
     let attrs = ` data-flow="${esc(page.flow)}"`;
-    if (page.sound) attrs += page.soundFile ? ` data-flow-sound="${esc(url(page.soundFile))}"` : " data-flow-sound";
+    if (page.sound && page.soundFile) attrs += ` data-flow-sound="${esc(url(page.soundFile))}"`;
+    else if (playsPowerUp(page)) attrs += " data-flow-sound";
     const steps = Object.entries(page.steps || {}).map(([n, c]) => [n, { ...c, ...(c.sound ? { sound: url(c.sound) } : {}) }]);
     if (steps.length) attrs += ` data-flow-steps="${esc(JSON.stringify(Object.fromEntries(steps)))}"`;
     const layers = (page.layers || []).map((l) => ({ ...l, sound: url(l.sound) }));
@@ -3155,6 +3157,14 @@ ${pieces}
     fileName = name;
     tellWindowFile();
   }
+  /**
+   * Is the project open the builder's own start screen (start-screen.lcars)?
+   * Only it may use the built-in power-up: other pages' sounds are files.
+   * (A release build is to stop anyone but the designer editing it.)
+   */
+  const isStartScreen = () => /^start-screen\.lcars$/i.test(fileName);
+  /** Does this page's opening play the power-up (its lead sound when it has no file of its own)? */
+  const playsPowerUp = (page) => !!page.sound && !page.soundFile && isStartScreen();
   /** The app knows which project each window has open, so opening it again brings that window forward. */
   const tellWindowFile = () => { if (APP) appCall("window_file", { path: filePath || null }).catch(() => {}); };
   /** Open in another window: that window came forward instead. */
