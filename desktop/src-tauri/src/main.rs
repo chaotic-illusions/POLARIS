@@ -362,6 +362,17 @@ fn designer() -> bool {
     cfg!(debug_assertions)
 }
 
+/// The start screen as last saved in the source folder (builder/start-screen.lcars),
+/// so a debug build shows a change without being rebuilt. A release build has only
+/// the copy built into it, and gets nothing here.
+#[tauri::command]
+async fn start_screen_source() -> Option<String> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builder/start-screen.lcars")).ok()
+}
+
 /// How many builder windows are open (closing the last one keeps its work for next time).
 #[tauri::command]
 async fn builder_windows(app: AppHandle) -> usize {
@@ -635,7 +646,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_site, open_path, launch_file, save_site, save_site_as, export_site, show_folder, preview, read_font,
-            choose_font, new_window, window_file, builder_windows, designer
+            choose_font, new_window, window_file, builder_windows, designer,
+            start_screen_source
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();

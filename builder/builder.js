@@ -717,6 +717,8 @@
    * release app never offers them, whatever a project's file is called.
    */
   let designer = !APP;
+  /** Settles once the app has said which build it is (at once in a browser). */
+  const designerKnown = APP ? appCall("designer").then((on) => { designer = on === true; }).catch(() => {}) : Promise.resolve();
 
   /** The LCARS font, for drawing exported text as shapes. Never published (see .gitignore). */
   const FONT_URL = "../fonts/Helvetica Ultra Compressed.otf";
@@ -3355,22 +3357,42 @@ ${pieces}
    * is fine) and does nothing. Other links do nothing here.
    * Until the file loads, or if it can't (a builder opened from disk), the start
    * screen written into index.html stands in.
+   * The designer's builder (a debug build, or the builder in a browser) reads the
+   * file again each time the start screen shows, and on R: save start-screen.lcars,
+   * then File > Show start screen, and the change is there without a rebuild. The
+   * debug app reads it from the source folder, not the copy built into it.
    */
   const START_FILE = "start-screen.lcars";
   let startPage = null;
   let startImages = {};
   let startSounds = new Map(); // sounds/name -> object URL
-  fetch(START_FILE, { cache: "no-cache" })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => {
+  let startLoading = null;
+  /** Read the start screen's design (one read at a time). */
+  function loadStartScreen() {
+    return startLoading ||= (async () => {
+      const text = APP && designer ? await appCall("start_screen_source").catch(() => null) : null;
+      const d = text ? JSON.parse(text) : await fetch(START_FILE, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null));
       if (!d) return;
       const s = d.format === PROJECT_FORMAT ? d.site : d;
-      startPage = preparePage(Array.isArray(s.pages) ? s.pages[s.current | 0] || s.pages[0] : s);
+      const page = preparePage(Array.isArray(s.pages) ? s.pages[s.current | 0] || s.pages[0] : s);
+      for (const url of startSounds.values()) URL.revokeObjectURL(url);
+      startPage = page;
       startImages = d.images || {};
       startSounds = new Map(Object.entries(d.sounds || {}).filter(([src, b64]) => isSoundSrc(src) && typeof b64 === "string")
         .map(([src, b64]) => [src, URL.createObjectURL(fromBase64(src, b64))]));
-    })
-    .catch(() => { /* no design: the written-in start screen stays */ })
+    })()
+      .catch(() => { /* no design (or a broken one): the last one, or the written-in start screen, stays */ })
+      .finally(() => { startLoading = null; });
+  }
+  /** Read the design again and show it, opening and all (the designer's builder). */
+  function refreshSplash() {
+    return loadStartScreen().then(() => {
+      if (!splashOpen) return;
+      paintSplash();
+      splashFocus();
+    });
+  }
+  designerKnown.then(loadStartScreen)
     .finally(() => {
       $("#splash").classList.remove("pending");
       if (splashOpen) {
@@ -3454,12 +3476,14 @@ ${pieces}
     if ($("#splash .sp-screen")) document.activeElement?.blur?.();
     else $("#sp-new").focus();
   }
-  // R on the start screen plays its opening again (to watch it without restarting the app).
+  // R on the start screen plays its opening again (to watch it without restarting the app);
+  // the designer's builder reads start-screen.lcars again first, so a saved change shows.
   document.addEventListener("keydown", (e) => {
     if (!splashOpen || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.key.toLowerCase() !== "r") return;
     if (newDialog.open || e.target.closest?.("input, textarea, select, [contenteditable]")) return;
     e.preventDefault();
-    paintSplash();
+    if (designer) refreshSplash();
+    else paintSplash();
   });
   document.addEventListener("keydown", (e) => {
     if (!splashOpen || e.key !== "Enter" || e.defaultPrevented) return;
@@ -3482,9 +3506,11 @@ ${pieces}
   function showSplash() {
     if (editing) finishEdit(true);
     for (const pop of document.querySelectorAll(":popover-open")) pop.hidePopover();
-    paintSplash();
     $("#splash").hidden = false;
     splashOpen = true;
+    // The designer sees the start screen as last saved (once the first read is done: it paints when it is).
+    if (designer && !$("#splash").classList.contains("pending")) return void refreshSplash();
+    paintSplash();
     splashFocus();
   }
 
@@ -3884,6 +3910,7 @@ ${pieces}
       ["Publish...", "", () => COMMANDS.export()],
       ["Preferences...", "", () => COMMANDS.prefs()],
       ["Close project", "", () => COMMANDS.close()],
+      ["Show start screen", "", () => showSplash(), { designer: true }], // reads start-screen.lcars again: no rebuild
     ]],
     ["Edit", "lilac", [
       ["Undo", "Ctrl+Z", () => undo(), { when: () => undoStack.length > 1 }],
@@ -3938,13 +3965,16 @@ ${pieces}
         menu.hidePopover();
         run();
       });
-      entries.push([b, opts.when]);
+      entries.push([b, opts.when, opts.designer]);
       menu.append(b);
     }
     // What can run is worked out as the menu opens; on the start screen, only File's commands make sense.
     menu.addEventListener("beforetoggle", (e) => {
       if (e.newState !== "open") return;
-      for (const [b, when] of entries) b.disabled = splashOpen ? !!when : !!when && !when();
+      for (const [b, when, onlyDesigner] of entries) {
+        b.disabled = splashOpen ? !!when : !!when && !when();
+        b.hidden = !!onlyDesigner && !designer; // the designer's builder only (not a release build)
+      }
     });
     menubar.append(top);
     document.body.append(menu);
@@ -4229,7 +4259,7 @@ ${pieces}
     useAppFont();
     tellWindowFile();
     // Debug build or release? (The page panel shows the start screen's power-up only in debug.)
-    appCall("designer").then((on) => { designer = on === true; renderInspector(); }).catch(() => {});
+    designerKnown.then(renderInspector);
     // Opened for a project (double-clicked, at start or while POLARIS runs): open it.
     appCall("launch_file").then((path) => path && openPath(path)).catch(() => {});
     // Closing with changes not saved to a file asks first. The last window keeps its work for next
