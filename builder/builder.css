@@ -400,6 +400,13 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
 }
 /* The page's Opening section: one box per step. */
 .inspector .step-box { margin: 10px 0; padding: 6px 10px 2px; border: 1px solid #333; border-radius: 12px; }
+/* Layered sounds: the file on one line, its start time and Remove under it. */
+.inspector .layer-row { margin: 8px 0 12px; padding-bottom: 10px; border-bottom: 1px solid #333; }
+.inspector .layer-name { color: var(--peach); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.inspector .layer-controls { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.inspector .layer-at { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #999; text-transform: uppercase; }
+.inspector .layer-at input { width: 5.5em; }
+.inspector .layer-controls .pill { margin-left: auto; font-size: 14px; padding: 0.35em 1em; }
 .inspector .step-box h3 { margin: 2px 0 4px; color: var(--peach); font-size: 15px; font-weight: 400; letter-spacing: 0.06em; }
 /* Every keyboard shortcut, in Help. */
 .inspector .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 10px 0 0; font-size: 13px; }

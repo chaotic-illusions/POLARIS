@@ -2144,7 +2144,7 @@
     );
 
     inspector.append(section("Page", [field(doc, "title", "Page title", "text", { page: true }), fileWrap, screen, row, pageActions]),
-      section("Opening", openingSettings()), section("Groups", groupSettings()), section("Publish", exportSettings()),
+      section("Opening", openingSettings()), section("Layered sounds", layerSettings()), section("Groups", groupSettings()), section("Publish", exportSettings()),
       section("Help", [note, shortcutList()]));
   }
 
@@ -2184,46 +2184,6 @@
         rebuild();
       }));
     }
-
-    // Sounds on top of it (a voice over the power-up, say), each from its own start time.
-    doc.layers ||= [];
-    const layerNote = document.createElement("p");
-    layerNote.className = "note";
-    layerNote.textContent = "Layered sounds play on top of the opening's sound, together with it, each from its start time.";
-    out.push(layerNote);
-    doc.layers.forEach((layer, i) => {
-      const box = document.createElement("div");
-      box.className = "step-box";
-      const head = document.createElement("h3");
-      head.textContent = `Layer ${i + 1}`;
-      const at = document.createElement("label");
-      at.className = "field";
-      const atCap = document.createElement("span");
-      atCap.textContent = "Starts at (seconds from the beginning)";
-      const atInput = document.createElement("input");
-      atInput.type = "number";
-      atInput.min = "0";
-      atInput.step = "0.1";
-      atInput.value = layer.at;
-      atInput.addEventListener("change", () => {
-        const v = Number(atInput.value);
-        layer.at = v >= 0 ? Math.round(v * 100) / 100 : 0;
-        atInput.value = layer.at;
-        commit();
-      });
-      at.append(atCap, atInput);
-      box.append(head, at, soundPicker(layer.sound, (src) => {
-        if (src) layer.sound = src;
-        else doc.layers.splice(doc.layers.indexOf(layer), 1);
-        rebuild();
-      }, "Sound"));
-      out.push(box);
-    });
-    out.push(soundPicker("", (src) => {
-      if (!src) return;
-      doc.layers.push({ sound: src, at: 0 });
-      rebuild();
-    }, "Add a layered sound"));
 
     // The steps on this page, from their pieces.
     const counts = new Map();
@@ -2273,6 +2233,76 @@
       }, "Sound as it comes in"));
       out.push(box);
     }
+    return out;
+  }
+
+  /**
+   * Sounds layered on top of the opening's (a voice over the power-up, say):
+   * one line each, its file, then its start time and Remove; one Add button
+   * under them all.
+   */
+  function layerSettings() {
+    doc.layers ||= [];
+    const rebuild = () => { commit(); renderInspector(); };
+    const out = [];
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = doc.layers.length
+      ? "Each plays on top of the opening's sound, from its start time (seconds from the beginning)."
+      : "Sounds to play on top of the opening's sound, such as a computer voice over the power-up.";
+    out.push(note);
+    for (const layer of doc.layers) {
+      const row = document.createElement("div");
+      row.className = "layer-row";
+      const name = document.createElement("div");
+      name.className = "layer-name";
+      name.textContent = layer.sound.slice("sounds/".length);
+      name.title = name.textContent;
+      const controls = document.createElement("div");
+      controls.className = "layer-controls";
+      const at = document.createElement("label");
+      at.className = "layer-at";
+      const atCap = document.createElement("span");
+      atCap.textContent = "Starts at";
+      const atInput = document.createElement("input");
+      atInput.type = "number";
+      atInput.min = "0";
+      atInput.step = "0.1";
+      atInput.value = layer.at;
+      atInput.setAttribute("aria-label", `Start time of ${name.textContent}, in seconds`);
+      atInput.addEventListener("change", () => {
+        const v = Number(atInput.value);
+        layer.at = v >= 0 ? Math.round(v * 100) / 100 : 0;
+        atInput.value = layer.at;
+        commit();
+      });
+      const unit = document.createElement("span");
+      unit.textContent = "s";
+      at.append(atCap, atInput, unit);
+      controls.append(at, actionButton("Remove", "rose", () => {
+        doc.layers.splice(doc.layers.indexOf(layer), 1);
+        rebuild();
+      }));
+      row.append(name, controls);
+      out.push(row);
+    }
+    // Add: an LCARS button that opens the file chooser.
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/*,.mp3,.wav,.ogg,.m4a";
+    input.hidden = true;
+    input.addEventListener("change", async () => {
+      const file = input.files[0];
+      if (!file) return;
+      const src = await imageSrcFor(file, "sounds");
+      attach(src, file);
+      doc.layers.push({ sound: src, at: 0 });
+      rebuild();
+    });
+    const actions = document.createElement("div");
+    actions.className = "actions tight";
+    actions.append(actionButton("Add sound", "orange", () => input.click()), input);
+    out.push(actions);
     return out;
   }
 
