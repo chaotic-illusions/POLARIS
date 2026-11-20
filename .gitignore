@@ -23,3 +23,34 @@ Thumbs.db
 
 # Python
 __pycache__/
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+
+# Desktop app (desktop/): installed tools, the staged copy of the builder, and build output
+/desktop/node_modules/
+/desktop/web/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
+
+# TrekCore audio library (Paramount/CBS audio): local use only, never publish
+/audio/
+
+# Python virtual environment
+/.venv/
+
+# Junction to D:\chatterbox (computer-voice work: venv, ripped audio, models) - local only
+/chatterbox
+
+# Working pictures (source art for the start screen): local only
+/assets/
+
+# The designed start screen, kept local while it's in progress (it carries the
+# computer-voice clip); without it the builder shows its written-in start screen
+/builder/start-screen.lcars
+
+# TrekCore download and sorting tools: local use only
+/tools/trekcore_download.py
+/tools/audio_library.py

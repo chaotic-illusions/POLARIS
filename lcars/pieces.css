@@ -1,5 +1,5 @@
 /*!
- * pieces.css: renders LCARS pages made in the TrekText builder.
+ * pieces.css: renders LCARS pages made in POLARIS.
  *
  * A page is a board of grid cells (--cols x --rows, each --cell design px).
  * Every piece sits on whole cells (--x, --y, --w, --h). The board scales to fit
@@ -57,16 +57,30 @@
   width: calc(var(--w) * var(--k));
   height: calc(var(--h) * var(--k));
   font-size: calc(var(--fs) * var(--u));
+  /* Set here, not on the board: an em resolves where it is declared, so this
+     tracks the text size and scales with the screen. */
+  letter-spacing: 0.03em;
   text-decoration: none;
 }
 /* Borders count inside sizes (frame brackets and corners rely on this). */
 .piece *, .piece *::before, .piece *::after { box-sizing: border-box; }
 .piece > .body {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: 0;
+  top: 0;
   width: calc(var(--iw, var(--w)) * var(--k));
   height: calc(var(--ih, var(--h)) * var(--k));
+  /* No movement (--rot is 0 here), but a transform gives the body its own paint
+     layer, which moving parts inside it (a gauge's pointer) need to redraw cleanly. */
+  transform: rotate(calc(var(--rot, 0) * 1deg));
+}
+/* A rotated piece turns its body about the centre. Unrotated bodies sit at the
+   piece's corner, not centred: centring them by half their size lands pieces
+   of different sizes on slightly different fractions of a pixel, and edges
+   that should meet show a step. */
+.piece[class*="rot-"] > .body {
+  left: 50%;
+  top: 50%;
   transform: translate(-50%, -50%) rotate(calc(var(--rot) * 1deg));
 }
 
@@ -100,22 +114,21 @@
   vertical-align: 0.276em;
 }
 
-/* Block: a rectangle, optionally with rounded ends. */
-.p-block > .body, .p-button > .body { background: var(--c); }
-.ends-left > .body, .ends-right > .body, .ends-both > .body, .ends-top > .body, .ends-bottom > .body {
-  --r: calc(min(var(--iw, var(--w)), var(--ih, var(--h))) * var(--k) / 2);
+/* Block: a rectangle, optionally with rounded ends. Its color is an SVG shape
+   (svg.p-shape, with the ends drawn in), like an elbow's, so where the two meet
+   their edges line up at any screen size. */
+.p-block > .body > svg.p-shape, .p-button > .body > svg.p-shape {
+  position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible;
 }
-.ends-left > .body { border-radius: var(--r) 0 0 var(--r); }
-.ends-right > .body { border-radius: 0 var(--r) var(--r) 0; }
-.ends-both > .body { border-radius: var(--r); }
-.ends-top > .body { border-radius: var(--r) var(--r) 0 0; }
-.ends-bottom > .body { border-radius: 0 0 var(--r) var(--r); }
+.p-block > .body > svg.p-shape path, .p-button > .body > svg.p-shape path { fill: var(--c); }
 
 /* Button: a block that links somewhere, with hover and pressed colors. */
 .p-button { cursor: pointer; }
-.p-button > .body { transition: background-color 0.12s; }
-.p-button:hover > .body, .p-button:focus-visible > .body { background: var(--c-hover, color-mix(in srgb, var(--c) 72%, #fff)); }
-.p-button:active > .body { background: var(--c-active, color-mix(in srgb, var(--c) 75%, #000)); }
+.p-button > .body > svg.p-shape path { transition: fill 0.12s; }
+.p-button:hover > .body > svg.p-shape path, .p-button:focus-visible > .body > svg.p-shape path {
+  fill: var(--c-hover, color-mix(in srgb, var(--c) 72%, #fff));
+}
+.p-button:active > .body > svg.p-shape path { fill: var(--c-active, color-mix(in srgb, var(--c) 75%, #000)); }
 .p-button:focus-visible { outline: calc(2 * var(--u)) solid #fff; outline-offset: calc(2 * var(--u)); }
 
 /* Elbow ("shape of doom"): drawn as SVG so both curves stay exact. */
@@ -166,6 +179,20 @@
   0% { opacity: 1; animation-timing-function: steps(1, end); }
   50% { opacity: 0.15; animation-timing-function: steps(1, end); }
 }
+/* Blink to a color (--c-blink) instead of dimming: the piece's color swaps for half of each blink,
+   and on pieces whose words are colored (not black on color) the words swap too. Both halves are
+   spelled out (--c-on, --tc-on: the piece's own colors, unset if it has none), since a custom
+   property left out of a keyframe doesn't fall back to the piece's value. */
+.piece.blink-to > .body { animation-name: lcars-blink-to; }
+.piece.blink-to:is(.p-text, .p-list, .p-quote) > .body { animation-name: lcars-blink-to-text; }
+@keyframes lcars-blink-to {
+  0% { --c: var(--c-on); animation-timing-function: steps(1, end); }
+  50% { --c: var(--c-blink); animation-timing-function: steps(1, end); }
+}
+@keyframes lcars-blink-to-text {
+  0% { --c: var(--c-on); --tc: var(--tc-on); animation-timing-function: steps(1, end); }
+  50% { --c: var(--c-blink); --tc: var(--c-blink); animation-timing-function: steps(1, end); }
+}
 
 /* ------------------------------------------------------------------ *
  * Image sizing, shared by Image and Frame pieces:
@@ -174,6 +201,15 @@
  *   img-fit   show the whole picture
  * ------------------------------------------------------------------ */
 .img-keep img { object-fit: cover; }
+/* Turn the picture (pic-90, pic-180, pic-270): it turns inside its box; the piece doesn't. On its side,
+   its box is the other way round (container units: the box's height becomes the picture's width). */
+.pic-90 { --turn: 90deg; }
+.pic-180 { --turn: 180deg; }
+.pic-270 { --turn: 270deg; }
+:is(.pic-90, .pic-180, .pic-270) :is(.img-box, .f-img) { container-type: size; }
+.pic-turn { position: absolute; left: 50%; top: 50%; width: 100cqw; height: 100cqh; transform: translate(-50%, -50%) rotate(var(--turn, 0deg)); }
+:is(.pic-90, .pic-270) .pic-turn { width: 100cqh; height: 100cqw; }
+.pic-turn > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .img-fit img { object-fit: contain; }
 .img-crop img {
   object-fit: cover;
@@ -303,6 +339,7 @@
 .p-cascade > .body {
   display: flex;
   justify-content: flex-end;
+  align-items: flex-start; /* columns keep their full height: the scroll loops on one copy (-50%), not half the piece */
   gap: calc(0.9 * var(--k));
   overflow: hidden;
   color: var(--c);
@@ -318,7 +355,74 @@
 .p-cascade .cc:nth-child(5n) { --d: 18s; }
 .p-cascade .cc:nth-child(7n) { --d: 11s; }
 @keyframes lcars-cascade { to { transform: translateY(-50%); } }
+/* Fill, shift and update (lcars/pieces.js): rows not typed in yet, and the row that flares. */
+.p-cascade .cc > .off { visibility: hidden; }
+.p-cascade .cc > .flare { color: #fff; }
+.p-cascade .cc > .band { color: var(--c2, #fff); } /* Sweep's two-row band */
+
+/* ------------------------------------------------------------------ *
+ * Gauge: a bracket with a numbered scale and an oval pointer that drifts
+ * up and down. The builder draws the shapes in an SVG measured in cells.
+ * --c bracket, --c2 / --c3 accents, --sc scale, --dc pointer, --tc numbers.
+ * ------------------------------------------------------------------ */
+.p-gauge > .body > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.p-gauge .g-br { fill: var(--c); }
+.p-gauge .g-a2 { fill: var(--c2, var(--c)); }
+.p-gauge .g-a3 { fill: var(--c3, var(--c)); }
+.p-gauge .g-bk { fill: var(--lcars-bg, #000); }
+.p-gauge .g-sc { fill: var(--sc, var(--lcars-atomic-tangerine)); }
+.p-gauge .g-rl { fill: var(--sc, var(--lcars-atomic-tangerine)); stroke: var(--lcars-bg, #000); }
+.p-gauge .g-num {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  color: var(--tc, var(--lcars-melrose));
+  white-space: pre;
+}
+/* A turned gauge keeps its numbers upright. On its side, each number stands up against its tick
+   (its own height, 1lh, against the scale) and is centred on it. */
+.p-gauge.rot-90 .g-num > span { rotate: -90deg; }
+.p-gauge.rot-180 .g-num > span { rotate: 180deg; }
+.p-gauge.rot-270 .g-num > span { rotate: 90deg; }
+.p-gauge:is(.rot-90, .rot-270) .g-num > span { translate: calc(50% - 0.5lh) 0; }
+.p-gauge.g-right:is(.rot-90, .rot-270) .g-num > span { translate: calc(0.5lh - 50%) 0; }
+.p-gauge .g-track { position: absolute; }
+.p-gauge .g-dot {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: calc(var(--p0) * 1%);
+  translate: 0 -50%;
+  border-radius: 50%;
+  background: var(--dc, #F4F6D8);
+  /* Its own layer: drawn once and moved, so it never leaves a trail of edge pixels behind it. */
+  will-change: transform;
+}
+.p-gauge.animate .g-dot { animation: lcars-gauge 11s ease-in-out infinite; }
+/* Four stops per piece (--p0 to --p3, in % of the scale): the pointer speeds up and slows down as it goes. */
+@keyframes lcars-gauge {
+  0%, 100% { top: calc(var(--p0) * 1%); }
+  27% { top: calc(var(--p1) * 1%); }
+  49% { top: calc(var(--p2) * 1%); }
+  78% { top: calc(var(--p3) * 1%); }
+}
+
+/* ------------------------------------------------------------------ *
+ * Waveform: an <lcars-waveform> element (lcars/waveform.js) filling the
+ * piece. Its colors, shape and motion are attributes on the element.
+ * ------------------------------------------------------------------ */
+.p-wave lcars-waveform { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ------------------------------------------------------------------ *
+ * Insignia: the Starfleet insignia in one color (--c), kept in proportion
+ * and centered in the piece.
+ * ------------------------------------------------------------------ */
+.p-insignia > .body > svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: var(--c); }
+
+/* A group (data-group) stays hidden until something with data-opens opens it (lcars/flow.js). */
+.lcars-board > .piece[data-group]:not(.group-open) { visibility: hidden; }
+.lcars-board > .piece[data-opens] { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
-  .blink-slow > .body, .blink-normal > .body, .blink-fast > .body, .p-cascade.animate .cc { animation: none; }
+  .blink-slow > .body, .blink-normal > .body, .blink-fast > .body, .piece.blink-to > .body, .p-cascade.animate .cc, .p-gauge.animate .g-dot { animation: none; }
 }

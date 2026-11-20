@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LCARS Builder</title>
+  <title>POLARIS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio&display=swap">
@@ -11,22 +11,24 @@
   <link rel="stylesheet" href="../lcars/palette.css">
   <link rel="stylesheet" href="../lcars/pieces.css">
   <link rel="stylesheet" href="builder.css">
+  <script src="../lcars/pieces.js"></script>
+  <script src="../lcars/waveform.js"></script>
+  <script src="../lcars/flow.js"></script>
+  <script src="../lcars/insignia.js"></script>
   <script src="../trek-padd.js"></script>
   <script src="../palette-data.js"></script>
+  <script src="vendor/opentype.min.js" defer></script>
+  <script src="outline.js" defer></script>
   <script src="builder.js" defer></script>
 </head>
 <body class="builder show-grid">
   <header class="topbar">
-    <span class="pill orange title">LCARS Builder</span>
+    <!-- File, Edit, Arrange and Group (builder.js fills them from MENU), then Pages and the project's name. -->
+    <nav class="menubar" id="menubar" aria-label="Menus"></nav>
+    <button type="button" id="page-pick" class="pill peach menu-top" popovertarget="pages-menu" title="The project's pages">Pages</button>
+    <span class="project-name" id="project-name" title="The open project, and the page on the board">POLARIS</span>
     <span class="fill"></span>
-    <button type="button" class="pill dkblue" data-cmd="prefs">Preferences</button>
-    <button type="button" class="pill lilac" data-cmd="new">New</button>
-    <button type="button" class="pill lilac" data-cmd="template">Template</button>
-    <button type="button" class="pill blue" data-cmd="open">Open</button>
-    <button type="button" class="pill blue" data-cmd="save">Save</button>
-    <button type="button" class="pill peach" data-cmd="preview">Preview</button>
-    <button type="button" class="pill orange" data-cmd="export">Export</button>
-    <input type="file" id="open-file" accept=".json,application/json" hidden>
+    <input type="file" id="open-file" accept=".lcars,.json,application/json" hidden>
   </header>
 
   <div class="workspace">
@@ -35,17 +37,18 @@
       <button type="button" class="tool" draggable="true" data-type="block" style="--c: var(--lcars-blue-bell)">Block</button>
       <button type="button" class="tool" draggable="true" data-type="button" style="--c: var(--lcars-atomic-tangerine)">Button</button>
       <button type="button" class="tool" draggable="true" data-type="elbow" style="--c: var(--lcars-chestnut-rose)">Elbow</button>
-      <button type="button" class="tool" draggable="true" data-type="text" style="--c: var(--lcars-tanoi)">Text</button>
-      <button type="button" class="tool" draggable="true" data-type="padd" style="--c: var(--lcars-melrose)">PADD</button>
-      <button type="button" class="tool" draggable="true" data-type="image" style="--c: var(--lcars-lilac)">Image</button>
-      <button type="button" class="tool" draggable="true" data-type="frame" style="--c: var(--lcars-orange-peel)">Frame</button>
-      <button type="button" class="tool" draggable="true" data-type="textbar" style="--c: var(--lcars-golden-tanoi)">Text Bar</button>
+      <button type="button" class="tool" draggable="true" data-type="text" style="--c: var(--lcars-tanoi)">Label</button>
+      <button type="button" class="tool" draggable="true" data-type="padd" style="--c: var(--lcars-melrose)">Text</button>
+      <button type="button" class="tool" draggable="true" data-type="image" style="--c: var(--lcars-lilac)">Image, No Frame</button>
+      <button type="button" class="tool" draggable="true" data-type="frame" style="--c: var(--lcars-orange-peel)">Image Frame</button>
+      <button type="button" class="tool" draggable="true" data-type="textbar" style="--c: var(--lcars-golden-tanoi)">Title Bar</button>
       <button type="button" class="tool" draggable="true" data-type="quote" style="--c: var(--lcars-hopbush)">Quote</button>
       <button type="button" class="tool" draggable="true" data-type="list" style="--c: var(--lcars-blue-bell)">List</button>
-      <button type="button" class="tool" draggable="true" data-type="cascade" style="--c: var(--lcars-sandy-brown)">Cascade</button>
+      <button type="button" class="tool" draggable="true" data-type="cascade" style="--c: var(--lcars-sandy-brown)">Number Cascade</button>
+      <button type="button" class="tool" draggable="true" data-type="gauge" style="--c: var(--lcars-orange-peel)">Gauge</button>
+      <button type="button" class="tool" draggable="true" data-type="wave" style="--c: var(--lcars-chestnut-rose)">Waveform</button>
+      <button type="button" class="tool" draggable="true" data-type="insignia" style="--c: var(--lcars-golden-tanoi)">Insignia</button>
       <p class="hint">Drag a piece onto the board, or click to add it in the middle.</p>
-      <h2>View</h2>
-      <label class="toggle"><input type="checkbox" id="grid-toggle" checked> Grid</label>
     </aside>
 
     <main class="stage" id="stage">
@@ -62,9 +65,17 @@
         <span class="fill"></span>
         <button class="pill blue" value="done">Done</button>
       </header>
+      <h2>Board</h2>
+      <label class="toggle"><input type="checkbox" id="grid-toggle" checked> Show the grid while editing</label>
       <h2>Colors in the pickers</h2>
-      <p class="note">Tick the colors you want offered when choosing piece and letter colors. Your picks are outlined.
-        Any LCARS color can still be used by name in text, as ##{name}.</p>
+      <p class="note">Tick the colors you want offered when choosing piece and letter colors, or start from a color set.
+        Your picks are outlined. Any LCARS color can still be used by name in text, as ##{name}.</p>
+      <div class="prefs-actions">
+        <label class="prefs-set">Color set <select id="prefs-set"></select></label>
+        <button type="button" class="pill orange" data-prefs="mine">Save as my picks</button>
+        <button type="button" class="pill orange" data-prefs="save">Save as a new set</button>
+        <button type="button" class="pill dkblue" data-prefs="delete" id="prefs-delete">Delete set</button>
+      </div>
       <div class="prefs-actions">
         <button type="button" class="pill lilac" data-prefs="picks">Reset to my picks</button>
         <button type="button" class="pill dkblue" data-prefs="all">All</button>
@@ -74,6 +85,75 @@
       <div id="prefs-colors"></div>
     </form>
   </dialog>
+
+  <!-- Start screen: open a project, or start a new one. builder.js draws it from start-screen.lcars
+       (made in the builder); this one stands in until that loads, or if it can't. -->
+  <section id="splash" class="splash pending" aria-label="Start" hidden>
+    <div class="sp">
+      <div class="sp-elbow sp-top"><span class="sp-title">POLARIS</span></div>
+      <div class="sp-mid">
+        <div class="sp-side" aria-hidden="true">
+          <span style="--c: var(--lcars-lilac)">01-1701</span>
+          <span style="--c: var(--lcars-tanoi)">02-4721</span>
+          <span style="--c: var(--lcars-chestnut-rose)">03-0815</span>
+          <span style="--c: var(--lcars-melrose)">04-2364</span>
+        </div>
+        <div class="sp-main">
+          <!-- The Starfleet insignia, drawn from ../lcars/insignia.js by builder.js. -->
+          <svg class="sp-delta" viewBox="0 0 100 105" aria-hidden="true"></svg>
+          <div class="sp-text">
+            <p class="sp-status">Project access</p>
+            <h1>No project loaded</h1>
+            <p class="sp-lead">Open a project, or start a new one.</p>
+            <div class="sp-actions">
+              <button type="button" class="pill orange" id="sp-new">New Project</button>
+              <button type="button" class="pill blue" id="sp-open">Open Project</button>
+            </div>
+            <div id="sp-resume" class="sp-list"></div>
+            <h2 id="sp-recent-head" hidden>Recent projects</h2>
+            <div id="sp-recent" class="sp-list"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sp-elbow sp-bottom"><span class="sp-foot">Projects are saved as .lcars files</span></div>
+    </div>
+  </section>
+
+  <dialog id="new-project" class="prefs np" aria-labelledby="np-title">
+    <form method="dialog">
+      <header class="prefs-head">
+        <span class="pill orange title" id="np-title">New Project</span>
+        <span class="fill"></span>
+      </header>
+      <label class="field np-field"><span>Site name</span>
+        <input type="text" id="np-name" placeholder="crymson.org" autocomplete="off" spellcheck="false"></label>
+      <p class="note">Usually the site's domain. It names the project file and the folder it publishes to.</p>
+      <fieldset class="np-start">
+        <legend>Start with</legend>
+        <label><input type="radio" name="np-start" value="blank" checked> A blank page</label>
+        <label><input type="radio" name="np-start" value="classic"> Classic frame</label>
+        <label><input type="radio" name="np-start" value="access"> LCARS Access, with gauges</label>
+        <label><input type="radio" name="np-start" value="holodeck"> Holodeck panel</label>
+      </fieldset>
+      <div class="prefs-actions np-actions">
+        <button class="pill orange" value="create">Create</button>
+        <button class="pill dkblue" value="cancel" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- The project's pages, under its name: each publishes as name.html. -->
+  <div id="pages-menu" class="menu pages bar-menu" popover>
+    <span class="pill orange title" id="pages-project">Project</span>
+    <div id="pages-list" class="pages-list"></div>
+    <button type="button" class="pill blue" id="pages-new">+ New page</button>
+    <span class="pill lilac title sub">Replace this page with a template</span>
+    <button type="button" class="pill lilac" data-cmd="template" data-arg="classic" popovertarget="pages-menu" popovertargetaction="hide">Classic frame</button>
+    <button type="button" class="pill blue" data-cmd="template" data-arg="access" popovertarget="pages-menu" popovertargetaction="hide">LCARS Access, with gauges</button>
+    <button type="button" class="pill peach" data-cmd="template" data-arg="holodeck" popovertarget="pages-menu" popovertargetaction="hide">Holodeck panel</button>
+    <p class="note">Each page publishes as its file name, name.html. Click an empty part of the board to rename or remove the page.
+      Templates fit the Screen shape set under Page.</p>
+  </div>
 
   <div class="toast" id="toast" role="status"></div>
 </body>

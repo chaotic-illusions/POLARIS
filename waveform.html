@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>POLARIS Waveform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600&display=swap">
+  <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="lcars/palette.css">
+  <script src="trek-padd.js"></script>
+  <script src="lcars/waveform.js"></script>
+  <style>
+    body {
+      font-family: "Helvetica Ultra Compressed", "Antonio", "Arial Narrow", sans-serif;
+      text-transform: uppercase; letter-spacing: 0.03em; font-size: 20px; line-height: 1.2;
+    }
+    code { text-transform: none; letter-spacing: 0; font-size: 0.8em; color: var(--lcars-tanoi); }
+    .lcars-head .title { margin: 0 4px; color: var(--orange); font-size: 40px; font-weight: 400; line-height: 44px; white-space: nowrap; letter-spacing: 0.02em; }
+    .sep { display: inline-block; width: 0.16em; height: 0.16em; border-radius: 50%; background: currentColor; vertical-align: 0.276em; margin: 0 0.3em; }
+    .section-head .label { font-size: 26px; }
+    p.intro { max-width: 80ch; font-size: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 28px 24px; margin: 18px 0 34px; }
+    figure { margin: 0; }
+    figure lcars-waveform { height: 220px; }
+    figcaption { margin-top: 8px; font-size: 16px; color: var(--lcars-blue-bell); }
+    .hero lcars-waveform { height: min(48vw, 340px); max-width: 560px; }
+    @media (max-width: 700px) {
+      .lcars-head .title { font-size: 26px; } .lcars-head .fill { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="lcars-head">
+      <span class="pill orange">Waveform</span>
+      <span class="fill"></span>
+      <h1 class="title">LCARS 23801<span class="sep" aria-hidden="true"></span>Comm Waveform<span class="sep" aria-hidden="true"></span>Active</h1>
+      <span class="pill blue"><a href="motion.html">Motion</a></span>
+    </header>
+
+    <main>
+      <p class="intro">An animated comm-channel waveform, <code>&lt;lcars-waveform&gt;</code>, from
+        <code>lcars/waveform.js</code>. Drop it into any page, or add it in POLARIS as a <em>Waveform</em> piece.
+        Colors are LCARS names or any CSS color. If your system's "reduce motion" setting is on, the waveforms hold still.</p>
+
+      <section>
+        <div class="section-head"><span class="label">Voice</span><span class="rule"></span></div>
+        <figure class="hero" style="margin-top: 18px">
+          <lcars-waveform bracket fade></lcars-waveform>
+          <figcaption><code>&lt;lcars-waveform bracket fade&gt;</code></figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <div class="section-head"><span class="label">Colors and blends</span><span class="rule"></span></div>
+        <div class="grid">
+          <figure>
+            <lcars-waveform bracket fade color="ghost" color2="midnight" bracket-color="tanoi" accent="chestnut-rose" accent2="lilac" accent3="golden-tanoi"></lcars-waveform>
+            <figcaption>Along each line · <code>color="ghost" color2="midnight"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket gradient="height" color="golden-tanoi" color2="bourbon" shape="oval" lines="64" thickness="40"></lcars-waveform>
+            <figcaption>By height, oval · <code>gradient="height" shape="oval"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform gradient="across" fade color="nemesis-blue" color2="cardinal" shape="flat" lines="72"></lcars-waveform>
+            <figcaption>Left to right, even · <code>gradient="across" shape="flat"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket gradient="solid" color="green-apple" bracket-color="pewter" accent="green-apple" accent2="silver" accent3="flat-dark-earth" lines="32" thickness="70"></lcars-waveform>
+            <figcaption>Solid · <code>gradient="solid" lines="32" thickness="70"</code></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><span class="label">Bracket patterns</span><span class="rule"></span></div>
+        <div class="grid">
+          <figure>
+            <lcars-waveform bracket fade pattern="7"></lcars-waveform>
+            <figcaption>A pattern number · <code>pattern="7"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket fade pattern="42" mirror color="lilac" color2="cosmic" bracket-color="melrose" accent="hopbush" accent2="tanoi" accent3="lilac"></lcars-waveform>
+            <figcaption>Both sides alike · <code>pattern="42" mirror</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket fade pattern="random" color="atomic-tangerine" color2="bourbon" bracket-color="sandy-brown" accent="chestnut-rose" accent2="golden-tanoi" accent3="tanoi"></lcars-waveform>
+            <figcaption>New each time the page loads · <code>pattern="random"</code></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><span class="label">Motion</span><span class="rule"></span></div>
+        <div class="grid">
+          <figure>
+            <lcars-waveform bracket fade motion="pulse" color="lilac" color2="cosmic"></lcars-waveform>
+            <figcaption>Pulse · <code>motion="pulse"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket fade motion="ripple" color="atomic-tangerine" color2="bourbon"></lcars-waveform>
+            <figcaption>Ripple · <code>motion="ripple"</code></figcaption>
+          </figure>
+          <figure>
+            <lcars-waveform bracket fade motion="still"></lcars-waveform>
+            <figcaption>Still · <code>motion="still"</code></figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="lcars-foot">
+      <span class="pill dkblue"><a href="index.html">PADD demo</a></span>
+      <span class="fill"></span>
+    </footer>
+  </div>
+</body>
+</html>

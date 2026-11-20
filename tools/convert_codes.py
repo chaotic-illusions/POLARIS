@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert TrekText files from the old ##x letter codes to ##{name} color codes.
 
-The 2002 applet used single letters (##r, ##b, ...). TrekText now uses color
+The 2002 applet used single letters (##r, ##b, ...). POLARIS now uses color
 names, so ##b becomes ##{melrose}. Each changed file is rewritten in place and
 the original is kept beside it as <file>.bak.
 

@@ -1,5 +1,5 @@
 /*
- * LCARS palette for TrekText: every color name, generated from palette-data.js
+ * LCARS palette for POLARIS: every color name, generated from palette-data.js
  * by tools/build_palette.py. Do not edit by hand.
  *
  *   --lcars-<name>   the color itself
@@ -84,6 +84,55 @@
   --lcars-martian: #99CC33;
   --lcars-sand: #D29270;
   --lcars-wheat: #D1A16C;
+  --lcars-bronze: #B88B5C;
+  --lcars-copper: #C16C3D;
+  --lcars-galaxy-gray: #52526A;
+  --lcars-lawn: #99AA22;
+  --lcars-leather: #8E5A3C;
+  --lcars-red-brown: #A52A2A;
+  --lcars-african-violet: #BAA4E5;
+  --lcars-almond: #D29B7F;
+  --lcars-almond-creme: #FCC19F;
+  --lcars-barley: #EDB378;
+  --lcars-bluey: #8899FF;
+  --lcars-classic-brown: #895129;
+  --lcars-butterscotch: #EA9C72;
+  --lcars-dirty-mauve: #7A506D;
+  --lcars-dusty-mauve: #9D698A;
+  --lcars-classic-lilac: #8A72A7;
+  --lcars-mars: #FF2200;
+  --lcars-classic-orange: #EB943A;
+  --lcars-classic-red: #CF4F4F;
+  --lcars-subdued-sienna: #C47D69;
+  --lcars-true-mauve: #C082A9;
+  --lcars-butter: #FFEECC;
+  --lcars-daybreak: #FF9911;
+  --lcars-harvestgold: #FFAA44;
+  --lcars-october-sunset: #FF4400;
+  --lcars-lower-decks-orange: #FF7700;
+  --lcars-pumpkin-pie: #CC5500;
+  --lcars-alpha-blue: #5588EE;
+  --lcars-arctic-ice: #66CCFF;
+  --lcars-arctic-snow: #99CCFF;
+  --lcars-beta-blue: #7799DD;
+  --lcars-night-cloud: #344470;
+  --lcars-night-rain: #455580;
+  --lcars-radioactive: #88EEFF;
+  --lcars-starship-white: #F3F3FC;
+  --lcars-sunset-red: #FF3500;
+  --lcars-picard-blue: #37A6D1;
+  --lcars-picard-bright-blue: #41C4F7;
+  --lcars-picard-dark-blue: #1C3C55;
+  --lcars-picard-dark-gray: #2F3749;
+  --lcars-picard-ghost-gray: #D2D5DF;
+  --lcars-picard-light-gray: #9EA5BA;
+  --lcars-picard-light-orange-red: #FF6753;
+  --lcars-picard-medium-dark-blue: #2A7193;
+  --lcars-picard-medium-dark-gray: #52596E;
+  --lcars-picard-orange-red: #E7442A;
+  --lcars-picard-pale-orange-red: #FF977B;
+  --lcars-picard-primary-gray: #6D748C;
+  --lcars-starlight: #F3F4F7;
   --lcars-red-alert-1: #CD0000;
   --lcars-red-alert-2: #FE0000;
   --lcars-red-alert-pale: #FF9190;
@@ -168,6 +217,55 @@
 .t-martian { color: var(--lcars-martian); }
 .t-sand { color: var(--lcars-sand); }
 .t-wheat { color: var(--lcars-wheat); }
+.t-bronze { color: var(--lcars-bronze); }
+.t-copper { color: var(--lcars-copper); }
+.t-galaxy-gray { color: var(--lcars-galaxy-gray); }
+.t-lawn { color: var(--lcars-lawn); }
+.t-leather { color: var(--lcars-leather); }
+.t-red-brown { color: var(--lcars-red-brown); }
+.t-african-violet { color: var(--lcars-african-violet); }
+.t-almond { color: var(--lcars-almond); }
+.t-almond-creme { color: var(--lcars-almond-creme); }
+.t-barley { color: var(--lcars-barley); }
+.t-bluey { color: var(--lcars-bluey); }
+.t-classic-brown { color: var(--lcars-classic-brown); }
+.t-butterscotch { color: var(--lcars-butterscotch); }
+.t-dirty-mauve { color: var(--lcars-dirty-mauve); }
+.t-dusty-mauve { color: var(--lcars-dusty-mauve); }
+.t-classic-lilac { color: var(--lcars-classic-lilac); }
+.t-mars { color: var(--lcars-mars); }
+.t-classic-orange { color: var(--lcars-classic-orange); }
+.t-classic-red { color: var(--lcars-classic-red); }
+.t-subdued-sienna { color: var(--lcars-subdued-sienna); }
+.t-true-mauve { color: var(--lcars-true-mauve); }
+.t-butter { color: var(--lcars-butter); }
+.t-daybreak { color: var(--lcars-daybreak); }
+.t-harvestgold { color: var(--lcars-harvestgold); }
+.t-october-sunset { color: var(--lcars-october-sunset); }
+.t-lower-decks-orange { color: var(--lcars-lower-decks-orange); }
+.t-pumpkin-pie { color: var(--lcars-pumpkin-pie); }
+.t-alpha-blue { color: var(--lcars-alpha-blue); }
+.t-arctic-ice { color: var(--lcars-arctic-ice); }
+.t-arctic-snow { color: var(--lcars-arctic-snow); }
+.t-beta-blue { color: var(--lcars-beta-blue); }
+.t-night-cloud { color: var(--lcars-night-cloud); }
+.t-night-rain { color: var(--lcars-night-rain); }
+.t-radioactive { color: var(--lcars-radioactive); }
+.t-starship-white { color: var(--lcars-starship-white); }
+.t-sunset-red { color: var(--lcars-sunset-red); }
+.t-picard-blue { color: var(--lcars-picard-blue); }
+.t-picard-bright-blue { color: var(--lcars-picard-bright-blue); }
+.t-picard-dark-blue { color: var(--lcars-picard-dark-blue); }
+.t-picard-dark-gray { color: var(--lcars-picard-dark-gray); }
+.t-picard-ghost-gray { color: var(--lcars-picard-ghost-gray); }
+.t-picard-light-gray { color: var(--lcars-picard-light-gray); }
+.t-picard-light-orange-red { color: var(--lcars-picard-light-orange-red); }
+.t-picard-medium-dark-blue { color: var(--lcars-picard-medium-dark-blue); }
+.t-picard-medium-dark-gray { color: var(--lcars-picard-medium-dark-gray); }
+.t-picard-orange-red { color: var(--lcars-picard-orange-red); }
+.t-picard-pale-orange-red { color: var(--lcars-picard-pale-orange-red); }
+.t-picard-primary-gray { color: var(--lcars-picard-primary-gray); }
+.t-starlight { color: var(--lcars-starlight); }
 .t-red-alert-1 { color: var(--lcars-red-alert-1); }
 .t-red-alert-2 { color: var(--lcars-red-alert-2); }
 .t-red-alert-pale { color: var(--lcars-red-alert-pale); }
@@ -250,6 +348,55 @@
 .c-martian { --c: var(--lcars-martian); }
 .c-sand { --c: var(--lcars-sand); }
 .c-wheat { --c: var(--lcars-wheat); }
+.c-bronze { --c: var(--lcars-bronze); }
+.c-copper { --c: var(--lcars-copper); }
+.c-galaxy-gray { --c: var(--lcars-galaxy-gray); }
+.c-lawn { --c: var(--lcars-lawn); }
+.c-leather { --c: var(--lcars-leather); }
+.c-red-brown { --c: var(--lcars-red-brown); }
+.c-african-violet { --c: var(--lcars-african-violet); }
+.c-almond { --c: var(--lcars-almond); }
+.c-almond-creme { --c: var(--lcars-almond-creme); }
+.c-barley { --c: var(--lcars-barley); }
+.c-bluey { --c: var(--lcars-bluey); }
+.c-classic-brown { --c: var(--lcars-classic-brown); }
+.c-butterscotch { --c: var(--lcars-butterscotch); }
+.c-dirty-mauve { --c: var(--lcars-dirty-mauve); }
+.c-dusty-mauve { --c: var(--lcars-dusty-mauve); }
+.c-classic-lilac { --c: var(--lcars-classic-lilac); }
+.c-mars { --c: var(--lcars-mars); }
+.c-classic-orange { --c: var(--lcars-classic-orange); }
+.c-classic-red { --c: var(--lcars-classic-red); }
+.c-subdued-sienna { --c: var(--lcars-subdued-sienna); }
+.c-true-mauve { --c: var(--lcars-true-mauve); }
+.c-butter { --c: var(--lcars-butter); }
+.c-daybreak { --c: var(--lcars-daybreak); }
+.c-harvestgold { --c: var(--lcars-harvestgold); }
+.c-october-sunset { --c: var(--lcars-october-sunset); }
+.c-lower-decks-orange { --c: var(--lcars-lower-decks-orange); }
+.c-pumpkin-pie { --c: var(--lcars-pumpkin-pie); }
+.c-alpha-blue { --c: var(--lcars-alpha-blue); }
+.c-arctic-ice { --c: var(--lcars-arctic-ice); }
+.c-arctic-snow { --c: var(--lcars-arctic-snow); }
+.c-beta-blue { --c: var(--lcars-beta-blue); }
+.c-night-cloud { --c: var(--lcars-night-cloud); }
+.c-night-rain { --c: var(--lcars-night-rain); }
+.c-radioactive { --c: var(--lcars-radioactive); }
+.c-starship-white { --c: var(--lcars-starship-white); }
+.c-sunset-red { --c: var(--lcars-sunset-red); }
+.c-picard-blue { --c: var(--lcars-picard-blue); }
+.c-picard-bright-blue { --c: var(--lcars-picard-bright-blue); }
+.c-picard-dark-blue { --c: var(--lcars-picard-dark-blue); }
+.c-picard-dark-gray { --c: var(--lcars-picard-dark-gray); }
+.c-picard-ghost-gray { --c: var(--lcars-picard-ghost-gray); }
+.c-picard-light-gray { --c: var(--lcars-picard-light-gray); }
+.c-picard-light-orange-red { --c: var(--lcars-picard-light-orange-red); }
+.c-picard-medium-dark-blue { --c: var(--lcars-picard-medium-dark-blue); }
+.c-picard-medium-dark-gray { --c: var(--lcars-picard-medium-dark-gray); }
+.c-picard-orange-red { --c: var(--lcars-picard-orange-red); }
+.c-picard-pale-orange-red { --c: var(--lcars-picard-pale-orange-red); }
+.c-picard-primary-gray { --c: var(--lcars-picard-primary-gray); }
+.c-starlight { --c: var(--lcars-starlight); }
 .c-red-alert-1 { --c: var(--lcars-red-alert-1); }
 .c-red-alert-2 { --c: var(--lcars-red-alert-2); }
 .c-red-alert-pale { --c: var(--lcars-red-alert-pale); }

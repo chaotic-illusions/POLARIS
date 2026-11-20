@@ -41,7 +41,7 @@ def read_colors(source: str) -> dict[str, str]:
 def build_css(colors: dict[str, str], picks: list[str]) -> str:
     lines = [
         "/*",
-        " * LCARS palette for TrekText: every color name, generated from palette-data.js",
+        " * LCARS palette for POLARIS: every color name, generated from palette-data.js",
         " * by tools/build_palette.py. Do not edit by hand.",
         " *",
         " *   --lcars-<name>   the color itself",

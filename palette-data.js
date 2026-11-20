@@ -1,5 +1,5 @@
 /*
- * LCARS colors: the one source for every color name in TrekText.
+ * LCARS colors: the one source for every color name in POLARIS.
  *
  * Used directly by picks.html, palette.html and the builder. Run
  * `python tools/build_palette.py` after editing to regenerate
@@ -74,6 +74,46 @@
         ["ghost", "#88BBFF"], ["cool", "#6699FF"], ["evening", "#2266FF"], ["midnight", "#0048F0"], ["moonbeam", "#EBF0FF"],
         ["honey", "#FFCC99"], ["tangerine", "#FF8833"], ["washed-pumpkin", "#FF7744"], ["pumpkin", "#E63D00"],
         ["cardinal", "#DA2537"], ["red-copper", "#CC6666"], ["martian", "#99CC33"], ["sand", "#D29270"], ["wheat", "#D1A16C"],
+        ["bronze", "#B88B5C"], ["copper", "#C16C3D"], ["galaxy-gray", "#52526A"], ["lawn", "#99AA22"], ["leather", "#8E5A3C"],
+        ["red-brown", "#A52A2A"],
+      ],
+    },
+    {
+      title: "Classic",
+      src: `${THELCARS}, "Classic" theme. Its lilac, orange, red and brown are prefixed "classic-" here.`,
+      colors: [
+        ["african-violet", "#BAA4E5"], ["almond", "#D29B7F"], ["almond-creme", "#FCC19F"], ["barley", "#EDB378"],
+        ["bluey", "#8899FF"], ["classic-brown", "#895129"], ["butterscotch", "#EA9C72"], ["dirty-mauve", "#7A506D"],
+        ["dusty-mauve", "#9D698A"], ["classic-lilac", "#8A72A7"], ["mars", "#FF2200"], ["classic-orange", "#EB943A"],
+        ["classic-red", "#CF4F4F"], ["subdued-sienna", "#C47D69"], ["true-mauve", "#C082A9"],
+      ],
+    },
+    {
+      title: "Lower Decks",
+      src: `${THELCARS}, "Lower Decks" theme. Its orange is "lower-decks-orange" here.`,
+      colors: [
+        ["butter", "#FFEECC"], ["daybreak", "#FF9911"], ["harvestgold", "#FFAA44"], ["honey", "#FFCC99"],
+        ["october-sunset", "#FF4400"], ["lower-decks-orange", "#FF7700"], ["pumpkin-pie", "#CC5500"],
+      ],
+    },
+    {
+      title: "Lower Decks PADD",
+      src: `${THELCARS}, "Lower Decks PADD" theme.`,
+      colors: [
+        ["alpha-blue", "#5588EE"], ["arctic-ice", "#66CCFF"], ["arctic-snow", "#99CCFF"], ["beta-blue", "#7799DD"],
+        ["night-cloud", "#344470"], ["night-rain", "#455580"], ["radioactive", "#88EEFF"], ["starship-white", "#F3F3FC"],
+        ["sunset-red", "#FF3500"],
+      ],
+    },
+    {
+      title: "Picard",
+      src: `${THELCARS}, "Picard" theme. Its plain names (blue, dark gray and so on) are prefixed "picard-" here.`,
+      colors: [
+        ["picard-blue", "#37A6D1"], ["picard-bright-blue", "#41C4F7"], ["picard-dark-blue", "#1C3C55"],
+        ["picard-dark-gray", "#2F3749"], ["picard-ghost-gray", "#D2D5DF"], ["picard-light-gray", "#9EA5BA"],
+        ["picard-light-orange-red", "#FF6753"], ["picard-medium-dark-blue", "#2A7193"], ["picard-medium-dark-gray", "#52596E"],
+        ["picard-orange-red", "#E7442A"], ["picard-pale-orange-red", "#FF977B"], ["picard-primary-gray", "#6D748C"],
+        ["starlight", "#F3F4F7"],
       ],
     },
     {
@@ -86,7 +126,7 @@
     },
   ];
 
-  /** The colors chosen for TrekText: the builder's default set. */
+  /** The colors chosen for POLARIS: the builder's default set. */
   const PICKS = [
     "blue-bell", "melrose", "lilac", "hopbush", "chestnut-rose", "atomic-tangerine",
     "golden-tanoi", "tanoi", "indigo", "cosmic", "bourbon", "sandy-brown", "frozen-pond",

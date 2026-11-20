@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The builder windows (main, builder-2, ...): its own commands (declared in build.rs), its title, closing, events and dialogs. The preview window gets nothing: no capability names it, so pages shown there can't call any command.",
+  "windows": ["main", "builder-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "core:window:allow-destroy",
+    "dialog:default",
+    "allow-open-site",
+    "allow-open-path",
+    "allow-launch-file",
+    "allow-save-site",
+    "allow-save-site-as",
+    "allow-export-site",
+    "allow-show-folder",
+    "allow-preview",
+    "allow-read-font",
+    "allow-choose-font",
+    "allow-new-window",
+    "allow-window-file",
+    "allow-builder-windows"
+  ]
+}

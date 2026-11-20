@@ -1,7 +1,7 @@
 /*!
  * <trek-padd>: an LCARS-style PADD text display web component.
  *
- * A modern rebuild of TrekText, a Java applet written in 2002-2003.
+ * A modern rebuild of TrekText, a Java applet written in 2002-2003; part of POLARIS.
  * Text is revealed one line at a time with the original timing and beep,
  * colored with ##{name} codes such as ##{chestnut-rose} or ##{ghost}.
  *
@@ -42,7 +42,22 @@
     "nemesis-sand": "#DFAF71", "ghost": "#88BBFF", "cool": "#6699FF", "evening": "#2266FF",
     "midnight": "#0048F0", "moonbeam": "#EBF0FF", "honey": "#FFCC99", "tangerine": "#FF8833",
     "washed-pumpkin": "#FF7744", "pumpkin": "#E63D00", "cardinal": "#DA2537", "red-copper": "#CC6666",
-    "martian": "#99CC33", "sand": "#D29270", "wheat": "#D1A16C", "red-alert-1": "#CD0000",
+    "martian": "#99CC33", "sand": "#D29270", "wheat": "#D1A16C", "bronze": "#B88B5C",
+    "copper": "#C16C3D", "galaxy-gray": "#52526A", "lawn": "#99AA22", "leather": "#8E5A3C",
+    "red-brown": "#A52A2A", "african-violet": "#BAA4E5", "almond": "#D29B7F", "almond-creme": "#FCC19F",
+    "barley": "#EDB378", "bluey": "#8899FF", "classic-brown": "#895129", "butterscotch": "#EA9C72",
+    "dirty-mauve": "#7A506D", "dusty-mauve": "#9D698A", "classic-lilac": "#8A72A7", "mars": "#FF2200",
+    "classic-orange": "#EB943A", "classic-red": "#CF4F4F", "subdued-sienna": "#C47D69",
+    "true-mauve": "#C082A9", "butter": "#FFEECC", "daybreak": "#FF9911", "harvestgold": "#FFAA44",
+    "october-sunset": "#FF4400", "lower-decks-orange": "#FF7700", "pumpkin-pie": "#CC5500",
+    "alpha-blue": "#5588EE", "arctic-ice": "#66CCFF", "arctic-snow": "#99CCFF", "beta-blue": "#7799DD",
+    "night-cloud": "#344470", "night-rain": "#455580", "radioactive": "#88EEFF",
+    "starship-white": "#F3F3FC", "sunset-red": "#FF3500", "picard-blue": "#37A6D1",
+    "picard-bright-blue": "#41C4F7", "picard-dark-blue": "#1C3C55", "picard-dark-gray": "#2F3749",
+    "picard-ghost-gray": "#D2D5DF", "picard-light-gray": "#9EA5BA", "picard-light-orange-red": "#FF6753",
+    "picard-medium-dark-blue": "#2A7193", "picard-medium-dark-gray": "#52596E",
+    "picard-orange-red": "#E7442A", "picard-pale-orange-red": "#FF977B",
+    "picard-primary-gray": "#6D748C", "starlight": "#F3F4F7", "red-alert-1": "#CD0000",
     "red-alert-2": "#FE0000", "red-alert-pale": "#FF9190", "yellow-alert-1": "#CD870E",
     "yellow-alert-2": "#FFA90E", "yellow-alert-pale": "#FFDA67",
   });
@@ -139,6 +154,135 @@
     }
   }
 
+  /* ------------------------------------------------------------------ *
+   * Letter shapes
+   *
+   * POLARIS can give a PADD the outlines of the letters it uses
+   * (glyphs="id" names a <script type="application/json"> on the page), so
+   * the text shows in the LCARS font on computers that don't have it. The
+   * PADD still wraps, types and pages the text itself; each run of letters
+   * is drawn as a small inline SVG instead of live text. Letters without a
+   * shape stay live text.
+   *
+   *   { "upm": 1000, "mid": 0.34, "glyphs": { "A": [advance, "path"], ... },
+   *     "kern": { "AV": -20, ... } }
+   *
+   * Advances, kerning and paths are in font units (upm per em). "mid" is
+   * where the baseline sits, in em below the middle of a line.
+   * ------------------------------------------------------------------ */
+
+  const glyphSets = new WeakMap(); // <script> element -> parsed set (or null)
+
+  function glyphSet(id) {
+    const el = id ? document.getElementById(id) : null;
+    if (!el) return null;
+    if (glyphSets.has(el)) return glyphSets.get(el);
+    let set = null;
+    try {
+      const data = JSON.parse(el.textContent);
+      set = { upm: data.upm, mid: data.mid || 0, adv: new Map(), ids: new Map(), kern: new Map(Object.entries(data.kern || {})) };
+      const paths = [];
+      for (const [ch, [adv, d]] of Object.entries(data.glyphs)) {
+        set.adv.set(ch, adv);
+        if (d) {
+          set.ids.set(ch, `g${paths.length}`);
+          paths.push(`<path id="g${paths.length}" d="${d}"/>`);
+        }
+      }
+      set.defs = `<svg class="defs" aria-hidden="true" width="0" height="0"><defs>${paths.join("")}</defs></svg>`;
+    } catch (err) {
+      console.warn("trek-padd: could not read the letter shapes in", `#${id}`, err);
+    }
+    glyphSets.set(el, set);
+    return set;
+  }
+
+  /**
+   * How text is set in an element, in em: { fs (px), L (line height), ls (letter
+   * spacing), upper }. Glyph drawing needs it, since the browser no longer does.
+   */
+  function textLook(el) {
+    const s = getComputedStyle(el);
+    const fs = parseFloat(s.fontSize) || 16;
+    const lh = parseFloat(s.lineHeight);
+    return {
+      fs,
+      L: Number.isFinite(lh) ? lh / fs : 1.2,
+      ls: s.letterSpacing === "normal" ? 0 : (parseFloat(s.letterSpacing) || 0) / fs,
+      upper: s.textTransform === "uppercase",
+    };
+  }
+
+  const shown = (look, text) => (look.upper ? text.toUpperCase() : text);
+
+  /** Width of text in em, with live-text widths (in px) for letters that have no shape. */
+  function glyphWidth(set, look, text, liveWidth) {
+    const t = shown(look, text);
+    let w = 0;
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      if (set.adv.has(ch)) w += set.adv.get(ch) / set.upm + look.ls + (set.kern.get(ch + t[i + 1]) || 0) / set.upm;
+      else w += liveWidth(ch) / look.fs;
+    }
+    return w;
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  /** Nodes that draw text with the shapes: one SVG per stretch of known letters. */
+  function glyphNodes(set, look, text, color) {
+    const t = shown(look, text);
+    const nodes = [];
+    const { upm } = set;
+    const base = (look.L / 2 + set.mid) * upm;
+    let i = 0;
+    while (i < t.length) {
+      let j = i;
+      while (j < t.length && set.adv.has(t[j])) j++;
+      if (j > i) {
+        const svg = document.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("class", "g");
+        svg.setAttribute("aria-hidden", "true");
+        let x = 0;
+        for (let k = i; k < j; k++) {
+          const ch = t[k];
+          const id = set.ids.get(ch);
+          if (id) {
+            const use = document.createElementNS(SVG_NS, "use");
+            use.setAttribute("href", `#${id}`);
+            use.setAttribute("x", String(Math.round(x * 10) / 10));
+            use.setAttribute("y", String(Math.round(base * 10) / 10));
+            svg.append(use);
+          }
+          x += set.adv.get(ch) + look.ls * upm + (k + 1 < j ? set.kern.get(ch + t[k + 1]) || 0 : 0);
+        }
+        svg.setAttribute("viewBox", `0 0 ${Math.round(x * 10) / 10} ${Math.round(look.L * upm * 10) / 10}`);
+        svg.style.width = `${x / upm}em`;
+        svg.style.height = `${look.L}em`;
+        if (color) svg.style.color = color;
+        nodes.push(svg);
+        i = j;
+      } else {
+        // No shape for this letter: leave it as live text.
+        while (j < t.length && !set.adv.has(t[j])) j++;
+        const span = document.createElement("span");
+        span.textContent = t.slice(i, j);
+        if (color) span.style.color = color;
+        nodes.push(span);
+        i = j;
+      }
+    }
+    return nodes;
+  }
+
+  /** Text for screen readers, beside shapes they can't read. */
+  function speech(text) {
+    const span = document.createElement("span");
+    span.className = "sr";
+    span.textContent = text;
+    return span;
+  }
+
   /** Render marked-up text statically (no animation), one div per paragraph. */
   function toFragment(source) {
     const frag = document.createDocumentFragment();
@@ -201,12 +345,18 @@
   const audio = {
     ctx: null,
     buffers: new Map(), // url ("" = built-in) -> { buffer }
+    fetched: new Map(), // url -> its bytes, fetched before sound is allowed (see prefetch)
 
+    /**
+     * The page's sound. Browsers may hold it "suspended" until the visitor
+     * clicks or presses a key, but some allow it straight away (a site you
+     * use often, say), so try. Where the browser can tell us it will refuse
+     * (Firefox can), wait for the visitor instead.
+     */
     context() {
       if (this.ctx) return this.ctx;
       if (!window.AudioContext) return null;
-      // Browsers block sound until the visitor interacts with the page.
-      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return null;
+      if (navigator.getAutoplayPolicy?.("audiocontext") === "disallowed" && !navigator.userActivation?.hasBeenActive) return null;
       this.ctx = new AudioContext();
       return this.ctx;
     },
@@ -217,12 +367,7 @@
       if (!entry) {
         entry = { buffer: null };
         this.buffers.set(key, entry);
-        const bytes = url
-          ? fetch(url).then((r) => {
-              if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-              return r.arrayBuffer();
-            })
-          : Promise.resolve(base64ToBuffer(BEEP_WAV));
+        const bytes = url ? this.fetch(url) : Promise.resolve(base64ToBuffer(BEEP_WAV));
         bytes
           .then((data) => ctx.decodeAudioData(data))
           .then((buffer) => (entry.buffer = buffer))
@@ -231,11 +376,27 @@
       return entry.buffer;
     },
 
+    /** A sound file's bytes (once each). */
+    fetch(url) {
+      if (!this.fetched.has(url)) {
+        this.fetched.set(url, fetch(url).then((r) => {
+          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+          return r.arrayBuffer();
+        }));
+      }
+      // Decoding takes the bytes over, so each decode gets a copy.
+      return this.fetched.get(url).then((data) => data.slice(0));
+    },
+
     play(url, volume) {
       const ctx = this.context();
       if (!ctx) return;
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      const buffer = this.buffer(ctx, url);
+      const buffer = this.buffer(ctx, url); // starts loading it, ready for next time
+      // While sound is held, skip the beep: queued ones would all sound at once when it's let go.
+      if (ctx.state !== "running") {
+        ctx.resume().catch(() => {});
+        return;
+      }
       if (!buffer) return;
       const src = ctx.createBufferSource();
       const gain = ctx.createGain();
@@ -251,9 +412,19 @@
     if (!ctx) return;
     ctx.resume().catch(() => {});
     audio.buffer(ctx, "");
+    for (const el of document.querySelectorAll("[data-beep]")) audio.buffer(ctx, el.getAttribute("data-beep") || "");
     for (const type of ["pointerdown", "pointerup", "keydown"]) removeEventListener(type, warmAudio, true);
   }
   for (const type of ["pointerdown", "pointerup", "keydown"]) addEventListener(type, warmAudio, true);
+  // Buttons' own sounds are fetched as the page loads (no sound needs allowing for that), so the first click is heard.
+  const prefetch = () => {
+    for (const el of document.querySelectorAll("[data-beep]")) {
+      const url = el.getAttribute("data-beep");
+      if (url) audio.fetch(url).catch(() => {});
+    }
+  };
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", prefetch, { once: true });
+  else prefetch();
 
   /**
    * Anything marked data-beep (e.g. LCARS buttons from the builder) beeps when
@@ -311,6 +482,12 @@
   .pending { visibility: hidden; }
   .bar { display: flex; align-items: center; gap: 6px; font-size: 0.72em; line-height: 1; }
   .page { flex: 1; color: var(--lcars-blue-bell, #9999CC); letter-spacing: 0.06em; white-space: nowrap; }
+  svg.g { display: inline-block; vertical-align: top; overflow: visible; fill: currentColor; }
+  .defs { position: absolute; width: 0; height: 0; }
+  .sr {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
   button {
     font: inherit; letter-spacing: 0.06em; text-transform: uppercase;
     color: #000; border: 0; border-radius: 999px; padding: 0.45em 1.2em; cursor: pointer;
@@ -340,7 +517,7 @@
   const pad2 = (n) => String(n).padStart(2, "0");
 
   class TrekPadd extends HTMLElement {
-    static observedAttributes = ["src", "no-stardate", "muted", "hold", "color"];
+    static observedAttributes = ["src", "no-stardate", "muted", "hold", "color", "glyphs"];
 
     #source = null; // raw marked-up text
     #paras = []; // parsed paragraphs
@@ -360,6 +537,9 @@
     #loadToken = 0;
     #resizeObserver = null;
     #canvas = null;
+    #glyphs = null; // letter shapes, when the page provides them
+    #look = null; // how the text is set, for drawing with the shapes
+    #defs = null;
     $ = {};
 
     constructor() {
@@ -413,7 +593,7 @@
       else if (name === "no-stardate") this.#build(true);
       else if (name === "muted") this.#syncSound();
       else if (name === "hold") this.#scheduleHold();
-      else if (name === "color") this.#build(false);
+      else if (name === "color" || name === "glyphs") this.#build(false);
     }
 
     /* ---- public API ---- */
@@ -486,10 +666,52 @@
 
     #build(restart) {
       if (this.#source === null) return;
+      this.#useGlyphs();
       const header = this.hasAttribute("no-stardate") ? "" : `${stardateLine()}\n\n`;
       this.#paras = parse(header + this.#source, this.#defaultColor());
       this.#layout(restart);
       this.#scheduleStardate();
+    }
+
+    /** Pick up the letter shapes named by the glyphs attribute, if any. */
+    #useGlyphs() {
+      const set = glyphSet(this.getAttribute("glyphs"));
+      if (set === this.#glyphs) return;
+      this.#glyphs = set;
+      this.#defs?.remove();
+      this.#defs = null;
+      if (set) {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = set.defs;
+        this.#defs = tpl.content.firstChild;
+        this.shadowRoot.append(this.#defs);
+      }
+    }
+
+    /** Colored runs of para.text[start, end), as live text or drawn with the letter shapes. */
+    #appendRuns(parent, para, start, end) {
+      if (!this.#glyphs || !this.#look) {
+        appendRuns(parent, para, start, end);
+        return;
+      }
+      let i = start;
+      while (i < end) {
+        const code = para.colors[i];
+        let j = i + 1;
+        while (j < end && para.colors[j] === code) j++;
+        parent.append(...glyphNodes(this.#glyphs, this.#look, para.text.slice(i, j), colorValue(code)));
+        i = j;
+      }
+      parent.append(speech(para.text.slice(start, end)));
+    }
+
+    /** Set a control's text, drawn with the letter shapes when there are some. */
+    #setLabel(el, text) {
+      if (!this.#glyphs) {
+        if (el.textContent !== text) el.textContent = text;
+        return;
+      }
+      el.replaceChildren(...(text ? glyphNodes(this.#glyphs, textLook(el), text) : []), speech(text));
     }
 
     /* ---- live stardate ---- */
@@ -513,7 +735,7 @@
         const el = this.#lineEls[i];
         if (line.p !== 0 || !el || line.e <= line.s) return;
         el.replaceChildren();
-        appendRuns(el, para, line.s, line.e);
+        this.#appendRuns(el, para, line.s, line.e);
       });
     }
 
@@ -560,7 +782,9 @@
       if ("letterSpacing" in ctx) {
         ctx.letterSpacing = style.letterSpacing === "normal" ? "0px" : style.letterSpacing;
       }
-      const measure = (s) => ctx.measureText(s).width;
+      const live = (s) => ctx.measureText(s).width;
+      const look = (this.#look = this.#glyphs ? textLook(box) : null);
+      const measure = look ? (s) => glyphWidth(this.#glyphs, look, s, live) * look.fs : live;
       const perPage = Math.max(1, Math.floor((height + 0.5) / this.#lineHeight()));
 
       const lines = [];
@@ -615,7 +839,7 @@
       this.#lineEls = lines.map((line, i) => {
         const div = document.createElement("div");
         div.className = i < this.#shown ? "line" : "line pending";
-        if (line.e > line.s) appendRuns(div, this.#paras[line.p], line.s, line.e);
+        if (line.e > line.s) this.#appendRuns(div, this.#paras[line.p], line.s, line.e);
         else div.textContent = " ";
         return div;
       });
@@ -676,9 +900,11 @@
 
     #updateBar() {
       const count = this.#pages.length;
-      this.$.page.textContent = count ? `PAGE ${pad2(this.#page + 1)} / ${pad2(count)}` : "";
+      this.#setLabel(this.$.page, count ? `PAGE ${pad2(this.#page + 1)} / ${pad2(count)}` : "");
       this.$.prev.disabled = this.#page === 0;
-      this.$.next.textContent = this.#page === count - 1 ? "Restart" : "Next";
+      this.#setLabel(this.$.prev, "Back");
+      this.#setLabel(this.$.sound, "Audio");
+      this.#setLabel(this.$.next, this.#page === count - 1 ? "Restart" : "Next");
     }
 
     #onKey = (e) => {

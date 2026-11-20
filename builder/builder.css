@@ -1,4 +1,4 @@
-/* LCARS Builder interface. The page being built is styled by ../lcars/pieces.css. */
+/* POLARIS interface. The page being built is styled by ../lcars/pieces.css. */
 html, body { height: 100%; }
 body.builder {
   margin: 0;
@@ -11,16 +11,40 @@ body.builder {
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
-input, textarea, select { text-transform: none; letter-spacing: 0; }
+/* Everything in the app is in capitals, form fields and buttons too (they don't inherit it on their own). */
+input, textarea, select, option, button { text-transform: uppercase; letter-spacing: 0.02em; }
 
-.topbar { display: flex; gap: 6px; align-items: stretch; height: 40px; padding: 10px 12px 6px; }
-.topbar .title { border-radius: 20px 0 0 20px; font-size: 22px; }
-.topbar .fill { flex: 1; background: var(--lilac); min-width: 20px; }
-.topbar .pill { font-size: 16px; padding: 0 1em; }
+.topbar { display: flex; gap: 6px; align-items: stretch; height: 38px; padding: 10px 12px 6px; }
+.topbar .fill { flex: 1; background: var(--lilac); min-width: 20px; border-radius: 0 19px 19px 0; }
+.topbar .pill { font-size: 21px; padding: 0 1em; }
+/* The menu bar: File, Edit, Arrange, Group, then Pages; the first is rounded like a header's end cap. */
+.menubar { display: flex; gap: 6px; }
+.menu-top { border-radius: 0; letter-spacing: 0.06em; }
+.menu-top.first { border-radius: 19px 0 0 19px; padding-left: 1.3em; }
+.menu-top:hover, .menu-top:focus-visible { filter: brightness(1.15); }
+/* After the menus: the project's name and the page on the board, as an LCARS header reads. */
+.project-name {
+  display: flex; align-items: center; gap: 0.5em; padding: 0 0.6em; max-width: 40vw; overflow: hidden;
+  color: var(--orange); font-size: 28px; letter-spacing: 0.06em; white-space: nowrap; text-overflow: ellipsis;
+}
+.project-name small { font-size: 0.62em; color: var(--peach); }
+/* Each menu drops from its name (builder.js places it). */
+.menu.bar-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100vh - 80px); overflow-y: auto; }
+.menu.cmd-menu { width: 270px; gap: 5px; }
+.cmd-menu button { display: flex; align-items: baseline; gap: 0.8em; font-size: 17px; padding: 0.3em 1em; }
+.cmd-menu button small { margin-left: auto; font-size: 0.72em; opacity: 0.75; white-space: nowrap; }
+.cmd-menu button:disabled { opacity: 0.35; cursor: default; }
+.menu.pages { width: 380px; }
+.menu .title.sub { margin-top: 10px; font-size: 15px; }
+.pages-list { display: flex; flex-direction: column; gap: 6px; }
+.menu.pages button { font-size: 20px; padding: 0.35em 1em; text-align: left; display: flex; align-items: baseline; gap: 0.6em; }
+.menu.pages button small { margin-left: auto; font-size: 0.7em; opacity: 0.75; }
+.menu.pages button[aria-current="page"] { background: var(--orange); }
+.menu.pages [data-cmd="template"] { font-size: 16px; }
 
 .workspace {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 300px;
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
   gap: 10px;
   padding: 6px 12px 12px;
   min-height: 0;
@@ -32,10 +56,12 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
   margin: 8px 0 2px; color: var(--orange); font-size: 18px; font-weight: 400; letter-spacing: 0.08em;
 }
 .tools h2:first-child, .inspector h2:first-child { margin-top: 0; }
+/* Piece buttons: LCARS buttons, with the name in capitals in the lower right. */
 .tool {
-  display: flex; align-items: center; justify-content: flex-end;
-  height: 32px; padding: 0 12px; border: 0; border-radius: 16px 0 0 16px;
-  background: var(--c, var(--orange)); color: #000; font: inherit; font-size: 16px; cursor: grab;
+  display: flex; flex: none; align-items: flex-end; justify-content: flex-end;
+  height: 38px; padding: 0 21px 3px 16px; border: 0; border-radius: 19px 0 0 19px;
+  background: var(--c, var(--orange)); color: #000; font: inherit; font-size: 22px; line-height: 1;
+  letter-spacing: 0.06em; text-transform: uppercase; cursor: grab;
 }
 .tool:hover { filter: brightness(1.15); }
 .tool:active { cursor: grabbing; }
@@ -51,7 +77,7 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .stage .p-padd trek-padd { pointer-events: none; }
 .stage.drop-target .lcars-board { outline: 2px solid var(--orange); }
 
-.show-grid .lcars-board::before {
+.show-grid .stage .lcars-board::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -67,6 +93,20 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
     calc(4 * var(--k)) calc(4 * var(--k)),
     var(--k) var(--k),
     var(--k) var(--k);
+}
+
+/* Several pieces selected: each outlined (no handles); and the box dragged to select them. */
+.piece.is-picked { outline: 2px dashed #fff; outline-offset: 1px; }
+.marquee {
+  position: absolute;
+  z-index: 9001;
+  left: calc(var(--x) * var(--k));
+  top: calc(var(--y) * var(--k));
+  width: calc(var(--w) * var(--k));
+  height: calc(var(--h) * var(--k));
+  outline: 1px dashed #fff;
+  background: rgb(153 153 255 / 0.12);
+  pointer-events: none;
 }
 
 /* Selection box with resize handles */
@@ -101,7 +141,7 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .sel .dims {
   position: absolute; left: 0; top: 100%; margin-top: 8px;
   padding: 2px 6px; border-radius: 6px; background: #fff; color: #000;
-  font: 12px ui-monospace, Consolas, monospace; white-space: nowrap; text-transform: none;
+  font: 12px ui-monospace, Consolas, monospace; white-space: nowrap; text-transform: uppercase;
 }
 
 /* Inspector */
@@ -125,7 +165,7 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .swatches button.auto { background: repeating-linear-gradient(45deg, #333 0 3px, #555 3px 6px); }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .actions .pill { font-size: 14px; padding: 0.35em 1em; }
-.inspector .note { font-size: 13px; color: #777; line-height: 1.3; text-transform: none; letter-spacing: 0; }
+.inspector .note { font-size: 16px; color: #999; line-height: 1.3; text-transform: uppercase; letter-spacing: 0; }
 .inspector kbd { font: 12px ui-monospace, Consolas, monospace; background: #222; border-radius: 4px; padding: 0 4px; }
 
 .toast {
@@ -182,6 +222,79 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .stage .piece.is-selected.img-crop .img-box { cursor: grab; }
 .stage .piece.is-selected.img-crop .panning { cursor: grabbing; }
 
+/* Drop-down menus */
+.menu {
+  flex-direction: column;
+  gap: 6px;
+  width: 300px;
+  padding: 14px;
+  border: 2px solid var(--dkblue);
+  border-radius: 18px;
+  background: #050508;
+  color: var(--dkblue);
+}
+.menu:popover-open { display: flex; }
+.menu::backdrop { background: rgb(0 0 0 / 0.5); }
+.menu .title { border-radius: 16px 0 0 16px; font-size: 20px; padding: 0.15em 1em; text-align: left; }
+.menu button { font-size: 16px; padding: 0.4em 1em; text-align: left; }
+.menu .note { margin: 4px 0 0; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0; line-height: 1.35; }
+
+/* Start screen: an LCARS frame over the builder, until a project is opened or started. */
+.splash { position: fixed; inset: 0; z-index: 20000; margin: 0; display: grid; place-items: center; background: #000; }
+.splash[hidden] { display: none; }
+.splash.pending > * { visibility: hidden; } /* until start-screen.lcars has loaded (or failed to) */
+/* The design from start-screen.lcars. Resume and recent buttons with no project wait, unlit. */
+.sp-screen .p-button.idle { cursor: default; pointer-events: none; }
+/* A button reached with Tab shows the hover colour, not a box. */
+.sp-screen .p-button:focus-visible { outline: none; }
+.sp-screen .p-button .lt small { margin-left: 1em; font-size: 0.7em; opacity: 0.75; letter-spacing: 0.02em; }
+/* Resume and recent projects: their words sit in a little from the button's rounded end. */
+.sp-screen .p-button.h-left .lt:has(> small) { padding-left: 0.8em; }
+.sp {
+  --side: 190px; --bar: 30px;
+  display: grid; grid-template-rows: 130px minmax(0, 1fr) 110px; gap: 8px;
+  width: min(1500px, calc(100vw - 40px)); height: min(900px, calc(100vh - 40px));
+}
+.sp-elbow { position: relative; background: var(--orange); }
+.sp-elbow::after { content: ""; position: absolute; left: var(--side); right: 0; background: #000; }
+.sp-top { border-radius: 70px 0 0 0; }
+.sp-top::after { top: var(--bar); bottom: 0; border-radius: 40px 0 0 0; }
+.sp-bottom { background: var(--lcars-chestnut-rose, #CC6666); border-radius: 0 0 0 70px; }
+.sp-bottom::after { top: 0; bottom: var(--bar); border-radius: 0 0 0 40px; }
+.sp-title, .sp-foot { position: absolute; z-index: 1; right: 50px; padding: 0 14px; background: #000; white-space: nowrap; }
+.sp-title { top: -10px; font-size: 54px; line-height: 50px; color: var(--orange); letter-spacing: 0.04em; }
+.sp-foot { bottom: -2px; font-size: 22px; line-height: 34px; color: var(--lcars-chestnut-rose, #CC6666); }
+.sp-mid { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); gap: 8px; min-height: 0; }
+.sp-side { display: flex; flex-direction: column; gap: 8px; }
+.sp-side span {
+  flex: 1; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 14px 6px;
+  background: var(--c); color: #000; font-size: 22px; letter-spacing: 0.06em;
+}
+.sp-main { display: flex; align-items: center; gap: 56px; padding: 10px 40px 10px 60px; min-height: 0; overflow: auto; }
+.sp-delta { flex: none; width: clamp(150px, 20vw, 280px); height: auto; fill: var(--lcars-golden-tanoi, #FFCC66); filter: drop-shadow(0 0 18px rgb(255 204 102 / 0.25)); }
+.sp-text { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sp-status { margin: 0; color: var(--lcars-melrose, #9999FF); font-size: 24px; letter-spacing: 0.12em; }
+.sp-text h1 { margin: 0; color: var(--orange); font-size: clamp(48px, 6vw, 84px); font-weight: 400; line-height: 0.95; letter-spacing: 0.03em; }
+.sp-lead { margin: 0 0 12px; color: var(--lcars-tanoi, #FFCC99); font-size: 30px; letter-spacing: 0.06em; }
+.sp-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.sp-actions .pill { font-size: 28px; padding: 0.3em 1.4em; }
+.sp-text h2 { margin: 16px 0 0; color: var(--lcars-melrose, #9999FF); font-size: 22px; font-weight: 400; letter-spacing: 0.1em; }
+.sp-list { display: flex; flex-direction: column; gap: 6px; max-width: 640px; }
+.sp-list:empty { display: none; }
+.sp-list .pill { display: flex; align-items: baseline; gap: 1em; font-size: 22px; padding: 0.3em 1.2em; text-align: left; }
+.sp-list .pill small { margin-left: auto; font-size: 0.7em; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* New project dialog */
+.np { width: min(560px, calc(100vw - 40px)); }
+.np-field { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; font-size: 18px; color: var(--peach); }
+.np-field input { padding: 8px 10px; border: 1px solid #333; border-radius: 10px; background: #0b0b12; color: #eee; font-size: 18px; }
+.np-start { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 14px; padding: 10px 14px; border: 1px solid #222; border-radius: 12px; font-size: 18px; }
+.np-start legend { color: var(--peach); padding: 0 6px; }
+.np-start label { display: flex; gap: 10px; align-items: center; cursor: pointer; }
+.np-start input { accent-color: var(--orange); }
+.np-actions { flex-direction: row-reverse; justify-content: flex-start; } /* Create is first, so Enter creates */
+.np-actions .pill { font-size: 18px; padding: 0.35em 1.4em; }
+
 /* Preferences window */
 .prefs {
   width: min(1100px, calc(100vw - 40px));
@@ -197,10 +310,16 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .prefs-head .title { border-radius: 18px 0 0 18px; font-size: 20px; }
 .prefs-head .fill { flex: 1; background: var(--lilac); }
 .prefs h2 { margin: 14px 0 4px; color: var(--orange); font-size: 20px; font-weight: 400; letter-spacing: 0.08em; }
-.prefs .note { margin: 0 0 10px; font-size: 14px; color: #888; text-transform: none; letter-spacing: 0; line-height: 1.35; }
+.prefs .note { margin: 0 0 10px; font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 0; line-height: 1.35; }
 .prefs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
 .prefs-actions .pill { font-size: 14px; padding: 0.3em 1em; }
 #prefs-count { margin-left: auto; font-size: 14px; }
+.prefs-set { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--peach); letter-spacing: 0.06em; }
+.prefs-set select {
+  min-width: 260px; padding: 4px 8px; border: 1px solid #333; border-radius: 10px;
+  background: #0b0b12; color: #ddd; font: inherit; text-transform: uppercase; letter-spacing: 0;
+}
+.prefs-actions .pill:disabled { opacity: 0.35; cursor: default; }
 .prefs-group h3 { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: 16px; font-weight: 400; color: var(--peach); letter-spacing: 0.06em; }
 .prefs-group h3 small { color: #777; font-size: 13px; }
 .prefs-group h3 .pill { margin-left: auto; font-size: 12px; padding: 0.2em 0.9em; }
@@ -257,3 +376,32 @@ input, textarea, select { text-transform: none; letter-spacing: 0; }
 .rt-edit.padd { min-height: 9em; max-height: 340px; font-size: 17px; }
 .rt-edit:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange); }
 .rt-edit::selection, .rt-edit *::selection { background: rgb(255 255 255 / 0.35); }
+
+/* Opening steps: the board marks each piece that comes in at a step with its number. */
+/* Hidden while editing (a group, to get at what's under it). */
+#board > .piece.is-veiled { opacity: 0.08; pointer-events: none; }
+/* The piece's group, Opening step and the group it opens. */
+#board > .piece[data-badge]::after {
+  content: attr(data-badge);
+  white-space: nowrap;
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  z-index: 3;
+  min-width: 1.3em;
+  padding: 1px 4px;
+  border-radius: 7px;
+  background: var(--lcars-golden-tanoi, #FFCC66);
+  color: #000;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+/* The page's Opening section: one box per step. */
+.inspector .step-box { margin: 10px 0; padding: 6px 10px 2px; border: 1px solid #333; border-radius: 12px; }
+.inspector .step-box h3 { margin: 2px 0 4px; color: var(--peach); font-size: 15px; font-weight: 400; letter-spacing: 0.06em; }
+/* Every keyboard shortcut, in Help. */
+.inspector .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 10px 0 0; font-size: 13px; }
+.inspector .keys dt { color: var(--peach); white-space: nowrap; }
+.inspector .keys dd { margin: 0; color: #999; }
