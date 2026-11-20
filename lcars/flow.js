@@ -619,15 +619,18 @@
       !sound ? false : own ? sounds.ready(800, own) : sounds.ready(800),
       ...stepSounds.map((url) => sounds.ready(800, url)),
       ...layers.map((l) => sounds.ready(800, l.sound)),
-    ]).then(([ok]) => {
+    ]).then(() => {
       if (running !== run) return;
+      // Every sound decides now, alike: it plays if it has loaded and sound may play. (A sound's own
+      // check can come before a new window's audio has started, which dropped the power-up alone.)
+      const ok = sounds.ctx?.state === "running";
       let presses = null;
       if (sound && own) {
         // Its length sets the opening's even if the browser holds the sound back (it plays once it may).
         const buf = sounds.files.get(own);
         if (buf) p.soundEnd = buf.duration * 1000 + 50;
         if (ok && buf) run.cleanup.push(playFile(own));
-      } else if (sound && ok) {
+      } else if (sound && ok && sounds.buffers) {
         presses = pressPlan();
         run.cleanup.push(powerUp(presses));
       }
@@ -871,7 +874,8 @@
     async ready(ms, url = "") {
       const ok = await Promise.race([url ? this.loadFile(url) : this.load(), wait(ms).then(() => false)]);
       if (!ok) return false;
-      if (this.ctx.state !== "running") await Promise.race([this.ctx.resume().catch(() => {}), wait(150)]);
+      // A new window's audio can take a moment to start; a browser holding sound until a click never starts it.
+      if (this.ctx.state !== "running") await Promise.race([this.ctx.resume().catch(() => {}), wait(400)]);
       return this.ctx.state === "running";
     },
   };
