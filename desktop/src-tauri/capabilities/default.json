@@ -20,6 +20,8 @@
     "allow-choose-font",
     "allow-new-window",
     "allow-window-file",
-    "allow-builder-windows"
+    "allow-builder-windows",
+    "allow-designer",
+    "allow-start-screen-source"
   ]
 }
