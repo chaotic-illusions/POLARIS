@@ -2144,46 +2144,18 @@
     );
 
     inspector.append(section("Page", [field(doc, "title", "Page title", "text", { page: true }), fileWrap, screen, row, pageActions]),
-      section("Opening", openingSettings()), section("Layered sounds", layerSettings()), section("Groups", groupSettings()), section("Publish", exportSettings()),
+      section("Opening", openingSettings()), section("Sounds", soundSettings()), section("Groups", groupSettings()), section("Publish", exportSettings()),
       section("Help", [note, shortcutList()]));
   }
 
   /**
-   * The page's opening: its style, its sound (the built-in power-up, a sound
-   * file of yours, or none), and its steps, each with an optional start time
-   * and sound.
+   * The page's opening animation: its style, and its steps, each with an
+   * optional start time and sound. The opening's sounds have their own
+   * section (soundSettings).
    */
   function openingSettings() {
     const out = [field(doc, "flow", "Opening (how the page appears)", ["console", "spread", "none"], { page: true })];
     const rebuild = () => { commit(); renderInspector(); };
-
-    // Sound: none, the power-up, or a file of yours (whose length sets the opening's).
-    const soundWrap = document.createElement("label");
-    soundWrap.className = "field";
-    const soundCap = document.createElement("span");
-    soundCap.textContent = "Sound with the opening";
-    const mode = document.createElement("select");
-    mode.add(new Option("Power-up (built in)", "power"));
-    mode.add(new Option("A sound file of yours (the opening takes as long as it does)", "own"));
-    mode.add(new Option("None", "none"));
-    // "A sound file of yours" stays chosen while you pick the file (until then, the power-up plays).
-    mode.value = !doc.sound ? "none" : doc.soundFile || choosingSound === doc ? "own" : "power";
-    mode.addEventListener("change", () => {
-      doc.sound = mode.value !== "none";
-      if (mode.value !== "own") doc.soundFile = "";
-      choosingSound = mode.value === "own" ? doc : null;
-      rebuild();
-    });
-    soundWrap.append(soundCap, mode);
-    out.push(soundWrap);
-    if (mode.value === "own") {
-      out.push(soundPicker(doc.soundFile, (src) => {
-        doc.soundFile = src;
-        choosingSound = null;
-        if (!src) doc.sound = false;
-        rebuild();
-      }));
-    }
 
     // The steps on this page, from their pieces.
     const counts = new Map();
@@ -2237,56 +2209,69 @@
   }
 
   /**
-   * Sounds layered on top of the opening's (a voice over the power-up, say):
-   * one line each, its file, then its start time and Remove; one Add button
-   * under them all.
+   * The opening's sounds, one line each: name, start time (seconds), Remove.
+   * First the lead sound, the one the opening is timed to (the built-in
+   * power-up, or a page's own file from before this list), starting at 0;
+   * then the sounds layered over it. Add sound under them all, and Add
+   * power-up when the page has no lead sound.
    */
-  function layerSettings() {
+  function soundSettings() {
     doc.layers ||= [];
     const rebuild = () => { commit(); renderInspector(); };
     const out = [];
-    const note = document.createElement("p");
-    note.className = "note";
-    note.textContent = doc.layers.length
-      ? "Each plays on top of the opening's sound, from its start time (seconds from the beginning)."
-      : "Sounds to play on top of the opening's sound, such as a computer voice over the power-up.";
-    out.push(note);
-    for (const layer of doc.layers) {
+    const list = document.createElement("div");
+    list.className = "sound-list";
+    const line = (name, at, onRemove, title = name) => {
       const row = document.createElement("div");
-      row.className = "layer-row";
-      const name = document.createElement("div");
-      name.className = "layer-name";
-      name.textContent = layer.sound.slice("sounds/".length);
-      name.title = name.textContent;
-      const controls = document.createElement("div");
-      controls.className = "layer-controls";
-      const at = document.createElement("label");
-      at.className = "layer-at";
-      const atCap = document.createElement("span");
-      atCap.textContent = "Starts at";
-      const atInput = document.createElement("input");
-      atInput.type = "number";
-      atInput.min = "0";
-      atInput.step = "0.1";
-      atInput.value = layer.at;
-      atInput.setAttribute("aria-label", `Start time of ${name.textContent}, in seconds`);
-      atInput.addEventListener("change", () => {
-        const v = Number(atInput.value);
+      row.className = "sound-row";
+      const label = document.createElement("span");
+      label.className = "sound-name";
+      label.textContent = name;
+      label.title = title;
+      const unit = document.createElement("span");
+      unit.className = "sound-unit";
+      unit.textContent = "s";
+      const remove = actionButton("Remove", "rose", onRemove);
+      remove.setAttribute("aria-label", `Remove ${name}`);
+      row.append(label, at, unit, remove);
+      list.append(row);
+    };
+    const timeInput = (value, name) => {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.1";
+      input.value = value;
+      input.setAttribute("aria-label", `${name}: starts at, in seconds`);
+      return input;
+    };
+
+    if (doc.sound) {
+      const name = doc.soundFile ? doc.soundFile.slice("sounds/".length) : "Power-up (built in)";
+      const at = timeInput(0, name);
+      at.disabled = true; // the opening is timed from it
+      line(name, at, () => { doc.sound = false; doc.soundFile = ""; rebuild(); }, `${name}: the opening is timed to this sound`);
+    }
+    for (const layer of doc.layers) {
+      const name = layer.sound.slice("sounds/".length);
+      const at = timeInput(layer.at, name);
+      at.addEventListener("change", () => {
+        const v = Number(at.value);
         layer.at = v >= 0 ? Math.round(v * 100) / 100 : 0;
-        atInput.value = layer.at;
+        at.value = layer.at;
         commit();
       });
-      const unit = document.createElement("span");
-      unit.textContent = "s";
-      at.append(atCap, atInput, unit);
-      controls.append(at, actionButton("Remove", "rose", () => {
-        doc.layers.splice(doc.layers.indexOf(layer), 1);
-        rebuild();
-      }));
-      row.append(name, controls);
-      out.push(row);
+      line(name, at, () => { doc.layers.splice(doc.layers.indexOf(layer), 1); rebuild(); });
     }
-    // Add: an LCARS button that opens the file chooser.
+    if (list.children.length) out.push(list);
+    else {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = "The opening plays silently.";
+      out.push(note);
+    }
+
+    // Add: LCARS buttons; Add sound opens the file chooser.
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "audio/*,.mp3,.wav,.ogg,.m4a";
@@ -2301,12 +2286,12 @@
     });
     const actions = document.createElement("div");
     actions.className = "actions tight";
-    actions.append(actionButton("Add sound", "orange", () => input.click()), input);
+    actions.append(actionButton("Add sound", "orange", () => input.click()));
+    if (!doc.sound) actions.append(actionButton("Add power-up", "blue", () => { doc.sound = true; doc.soundFile = ""; rebuild(); }));
+    actions.append(input);
     out.push(actions);
     return out;
   }
-
-  let choosingSound = null; // the page whose own opening sound is being chosen
 
   /** Choose a sound file (kept in the project, published in sounds/), or take it away. */
   function soundPicker(current, onPick, caption = "Sound file") {
