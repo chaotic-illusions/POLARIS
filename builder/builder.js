@@ -2154,6 +2154,13 @@
       section("Help", [note, shortcutList()]));
   }
 
+  /*
+   * Opening times show in milliseconds (250, not 0.25); pages keep them in
+   * seconds, as lcars/flow.js reads them, so files and published pages don't change.
+   */
+  const toMs = (s) => Math.round(s * 1000);
+  const fromMs = (ms) => Math.round(ms) / 1000;
+
   /**
    * The page's opening animation: its style, and its steps, each with an
    * optional start time and sound. The opening's sounds have their own
@@ -2171,7 +2178,7 @@
     note.className = "note";
     note.textContent = nums.length
       ? "After the frame and the rest of the content, each step comes in, in order. With sound they share the time until it ends; " +
-        "a start time (seconds from the beginning) sets a step's own."
+        "a start time (milliseconds from the beginning) sets a step's own."
       : "To bring pieces in later, give them an Opening step in their panel (select several to set them together).";
     out.push(note);
     doc.steps ||= {};
@@ -2184,18 +2191,18 @@
       const at = document.createElement("label");
       at.className = "field";
       const atCap = document.createElement("span");
-      atCap.textContent = "Starts at (seconds; blank: shared out)";
+      atCap.textContent = "Starts at (ms; blank: shared out)";
       const atInput = document.createElement("input");
       atInput.type = "number";
       atInput.min = "0";
-      atInput.step = "0.1";
+      atInput.step = "50";
       atInput.placeholder = "auto";
-      atInput.value = conf.at ?? "";
+      atInput.value = conf.at == null ? "" : toMs(conf.at);
       atInput.addEventListener("change", () => {
         const v = Number(atInput.value);
         const step = { ...(doc.steps[n] || {}) };
         if (atInput.value === "" || !(v >= 0)) delete step.at;
-        else step.at = Math.round(v * 100) / 100;
+        else step.at = fromMs(v);
         if (Object.keys(step).length) doc.steps[n] = step;
         else delete doc.steps[n];
         commit();
@@ -2215,7 +2222,7 @@
   }
 
   /**
-   * The opening's sounds, one line each: name, start time (seconds), Remove.
+   * The opening's sounds, one line each: name, start time (milliseconds), Remove.
    * First the lead sound, the one the opening is timed to (the built-in
    * power-up, or a page's own file from before this list), starting at 0;
    * then the sounds layered over it. Add sound under them all, and Add
@@ -2236,7 +2243,7 @@
       label.title = title;
       const unit = document.createElement("span");
       unit.className = "sound-unit";
-      unit.textContent = "s";
+      unit.textContent = "ms";
       const remove = actionButton("Remove", "rose", onRemove);
       remove.setAttribute("aria-label", `Remove ${name}`);
       row.append(label, at, unit, remove);
@@ -2246,9 +2253,9 @@
       const input = document.createElement("input");
       input.type = "number";
       input.min = "0";
-      input.step = "0.1";
-      input.value = value;
-      input.setAttribute("aria-label", `${name}: starts at, in seconds`);
+      input.step = "50";
+      input.value = toMs(value);
+      input.setAttribute("aria-label", `${name}: starts at, in milliseconds`);
       return input;
     };
 
@@ -2263,8 +2270,8 @@
       const at = timeInput(layer.at, name);
       at.addEventListener("change", () => {
         const v = Number(at.value);
-        layer.at = v >= 0 ? Math.round(v * 100) / 100 : 0;
-        at.value = layer.at;
+        layer.at = v >= 0 ? fromMs(v) : 0;
+        at.value = toMs(layer.at);
         commit();
       });
       line(name, at, () => { doc.layers.splice(doc.layers.indexOf(layer), 1); rebuild(); });

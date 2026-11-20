@@ -401,7 +401,7 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
 /* The page's Opening section: one box per step. */
 .inspector .step-box { margin: 10px 0; padding: 6px 10px 2px; border: 1px solid #333; border-radius: 12px; }
 /* The opening's sounds: one line each, name | start time | s | Remove. */
-.inspector .sound-list { display: grid; grid-template-columns: minmax(0, 1fr) 3.6em auto auto; align-items: center; gap: 5px 6px; margin-top: 4px; }
+.inspector .sound-list { display: grid; grid-template-columns: minmax(0, 1fr) 4.4em auto auto; align-items: center; gap: 5px 6px; margin-top: 4px; }
 .inspector .sound-row { display: contents; }
 .inspector .sound-name { color: var(--peach); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
 .inspector .sound-list input { width: 100%; box-sizing: border-box; padding: 3px 5px; }
