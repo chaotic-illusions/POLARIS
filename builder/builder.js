@@ -3358,9 +3358,9 @@ ${pieces}
    * Until the file loads, or if it can't (a builder opened from disk), the start
    * screen written into index.html stands in.
    * The designer's builder (a debug build, or the builder in a browser) reads the
-   * file again each time the start screen shows, and on R: save start-screen.lcars,
-   * then File > Show start screen, and the change is there without a rebuild. The
-   * debug app reads it from the source folder, not the copy built into it.
+   * file again each time the start screen shows (Close) and on R, so a saved change
+   * is there without a rebuild; Preview shows unsaved work. The debug app reads it
+   * from the source folder, not the copy built into it.
    */
   const START_FILE = "start-screen.lcars";
   let startPage = null;
@@ -3910,7 +3910,6 @@ ${pieces}
       ["Publish...", "", () => COMMANDS.export()],
       ["Preferences...", "", () => COMMANDS.prefs()],
       ["Close project", "", () => COMMANDS.close()],
-      ["Show start screen", "", () => showSplash(), { designer: true }], // reads start-screen.lcars again: no rebuild
     ]],
     ["Edit", "lilac", [
       ["Undo", "Ctrl+Z", () => undo(), { when: () => undoStack.length > 1 }],
@@ -3965,16 +3964,13 @@ ${pieces}
         menu.hidePopover();
         run();
       });
-      entries.push([b, opts.when, opts.designer]);
+      entries.push([b, opts.when]);
       menu.append(b);
     }
     // What can run is worked out as the menu opens; on the start screen, only File's commands make sense.
     menu.addEventListener("beforetoggle", (e) => {
       if (e.newState !== "open") return;
-      for (const [b, when, onlyDesigner] of entries) {
-        b.disabled = splashOpen ? !!when : !!when && !when();
-        b.hidden = !!onlyDesigner && !designer; // the designer's builder only (not a release build)
-      }
+      for (const [b, when] of entries) b.disabled = splashOpen ? !!when : !!when && !when();
     });
     menubar.append(top);
     document.body.append(menu);
