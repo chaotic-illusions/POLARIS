@@ -355,6 +355,13 @@ async fn window_file(window: WebviewWindow, windows: State<'_, Windows>, path: O
     Ok(())
 }
 
+/// A debug build is the designer's (`npm run build:debug`): it may use the start
+/// screen's own features, such as the power-up. A release build never offers them.
+#[tauri::command]
+fn designer() -> bool {
+    cfg!(debug_assertions)
+}
+
 /// How many builder windows are open (closing the last one keeps its work for next time).
 #[tauri::command]
 async fn builder_windows(app: AppHandle) -> usize {
@@ -628,7 +635,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_site, open_path, launch_file, save_site, save_site_as, export_site, show_folder, preview, read_font,
-            choose_font, new_window, window_file, builder_windows
+            choose_font, new_window, window_file, builder_windows, designer
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();

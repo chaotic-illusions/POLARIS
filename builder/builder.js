@@ -711,6 +711,12 @@
    */
   const APP = window.__TAURI__ ?? null;
   const appCall = (cmd, args) => APP.core.invoke(cmd, args);
+  /*
+   * The designer's builder may use the start screen's own features (the power-up):
+   * the app's debug build, and the builder run from the source in a browser. The
+   * release app never offers them, whatever a project's file is called.
+   */
+  let designer = !APP;
 
   /** The LCARS font, for drawing exported text as shapes. Never published (see .gitignore). */
   const FONT_URL = "../fonts/Helvetica Ultra Compressed.otf";
@@ -3158,11 +3164,11 @@ ${pieces}
     tellWindowFile();
   }
   /**
-   * Is the project open the builder's own start screen (start-screen.lcars)?
-   * Only it may use the built-in power-up: other pages' sounds are files.
-   * (A release build is to stop anyone but the designer editing it.)
+   * Is the project open the builder's own start screen (start-screen.lcars), in
+   * the designer's builder? Only it may use the built-in power-up: other pages'
+   * sounds are files, and a release build treats every project as an ordinary one.
    */
-  const isStartScreen = () => /^start-screen\.lcars$/i.test(fileName);
+  const isStartScreen = () => designer && /^start-screen\.lcars$/i.test(fileName);
   /** Does this page's opening play the power-up (its lead sound when it has no file of its own)? */
   const playsPowerUp = (page) => !!page.sound && !page.soundFile && isStartScreen();
   /** The app knows which project each window has open, so opening it again brings that window forward. */
@@ -4215,6 +4221,8 @@ ${pieces}
   if (APP) {
     useAppFont();
     tellWindowFile();
+    // Debug build or release? (The page panel shows the start screen's power-up only in debug.)
+    appCall("designer").then((on) => { designer = on === true; renderInspector(); }).catch(() => {});
     // Opened for a project (double-clicked, at start or while POLARIS runs): open it.
     appCall("launch_file").then((path) => path && openPath(path)).catch(() => {});
     // Closing with changes not saved to a file asks first. The last window keeps its work for next
