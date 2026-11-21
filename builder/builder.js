@@ -2597,66 +2597,20 @@
   };
   const stem = (file) => file.replace(/\.[^.]+$/, "");
 
-  /*
-   * The designer's sound library: TrekCore's clean effects in audio/clean/ in the
-   * source folder (listed in audio/manifest.csv; local only,
-   * never committed or shipped). The designer's builder (a debug build, or the
-   * builder run from the source) offers them with your own; a release build
-   * ships with no sounds at all.
-   */
-  const trekLib = { list: [], urls: new Map() };
-  /** A small CSV reader (quoted fields may hold commas, and "" for a quote). */
-  function csvRows(text) {
-    const rows = [];
-    let row = [], field = "", quoted = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (quoted) {
-        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
-        else if (c === '"') quoted = false;
-        else field += c;
-      } else if (c === '"') quoted = true;
-      else if (c === ",") { row.push(field); field = ""; }
-      else if (c === "\n" || c === "\r") {
-        if (c === "\r" && text[i + 1] === "\n") i++;
-        row.push(field); rows.push(row); row = []; field = "";
-      } else field += c;
-    }
-    if (field || row.length) { row.push(field); rows.push(row); }
-    return rows;
-  }
-  /** A file of the library: bytes from the app, or from the folder when the builder is served from the source. */
-  const trekFile = async (path) => (APP
-    ? await appCall("designer_sound", { path })
-    : await (await fetch(new URL(`../audio/${path}`, location.href))).arrayBuffer());
-  (async () => {
-    await designerKnown;
-    if (!designer) return;
-    try {
-      const [head, ...rows] = csvRows(new TextDecoder().decode(await trekFile("manifest.csv")));
-      const col = (name) => head.indexOf(name);
-      const [title, category, output] = [col("title"), col("category"), col("output")];
-      trekLib.list = rows.filter((r) => /^clean\/.+\.flac$/i.test(r[output] || ""))
-        .map((r) => ({ path: r[output], name: r[title] || stem(r[output].split("/").pop()), category: r[category] || "" }))
-        .sort(byName);
-      renderInspector();
-      if (prefsDialog.open) renderSounds();
-    } catch { /* no library on this computer */ }
-  })();
-  /** A library sound, ready to play (a blob: URL of it, kept once made). */
-  async function trekURL(s) {
-    if (!trekLib.urls.has(s.path)) trekLib.urls.set(s.path, URL.createObjectURL(new Blob([await trekFile(s.path)], { type: "audio/flac" })));
-    return trekLib.urls.get(s.path);
-  }
-
   /**
-   * Every sound, by name: the designer's library (above) and the ones you've
-   * added. Each: { name, note, url() (to play it), value (what a button's
-   * Sound keeps), mine (one you added, so it can be removed), trek }.
+   * Every sound, by name: the ones you've added, and in the designer's builds (a
+   * debug build, or the builder run from the source) the four POLARIS used to
+   * offer, for the start screen's buttons. A release build ships with none.
+   * Each: { name, note, url() (to play it), value (what a button's Sound keeps),
+   * mine (one you added, so it can be removed) }.
    */
   function allSounds() {
+    const builtIn = !designer ? [] : ["key", "tap", "chirp", "padd"].map((k) => ({
+      name: OPTION_NAMES.beep[k], note: k === "padd" ? "trek-padd.js" : BEEPS[k].split("/").pop(),
+      url: async () => (k === "padd" ? "" : libURL(BEEPS[k])), value: k,
+    }));
     return [
-      ...trekLib.list.map((s) => ({ name: s.name, note: s.category, url: () => trekURL(s), value: `trek:${s.path}`, trek: s })),
+      ...builtIn,
       ...soundLib.list.map((s) => ({ name: s.name, note: s.file, url: async () => mySoundURL(s), value: `mine:${s.id}`, mine: s })),
     ].sort(byName);
   }
@@ -2669,7 +2623,7 @@
     select.replaceChildren(new Option(OPTION_NAMES.beep.none, "none"));
     const inProject = [...attached.keys()].filter(isSoundSrc);
     const files = new Set(inProject.map((src) => src.slice("sounds/".length).toLowerCase()));
-    const fileOf = (s) => (s.mine ? s.mine.file : s.trek.path.split("/").pop()).toLowerCase();
+    const fileOf = (s) => (s.mine ? s.mine.file.toLowerCase() : "");
     const items = [
       ...allSounds().filter((s) => !files.has(fileOf(s))).map((s) => [s.value, s.name]),
       // A project file that came from a library keeps that sound's name.
@@ -2678,24 +2632,14 @@
     for (const [value, text] of items) select.add(new Option(text, value));
     if (isSoundSrc(current) && !inProject.includes(current)) select.add(new Option(`${stem(current.slice("sounds/".length))} (not in the project)`, current));
     // A button from before POLARIS stopped offering its own sounds keeps the one it has (no longer offered otherwise).
-    if (current in BEEPS) select.add(new Option(OPTION_NAMES.beep[current], current));
+    if (current in BEEPS && ![...select.options].some((o) => o.value === current)) select.add(new Option(OPTION_NAMES.beep[current], current));
   }
   /** A choice from the Sound list as the button keeps it: one of your sounds becomes a sound file of the project. */
   async function beepFromLibrary(value) {
-    let file;
-    if (value.startsWith("trek:")) {
-      const path = value.slice(5);
-      try {
-        file = new File([await trekFile(path)], path.split("/").pop(), { type: "audio/flac" });
-      } catch {
-        toast(`Could not read ${path}`);
-        return null;
-      }
-    } else if (value.startsWith("mine:")) {
-      const s = soundLib.list.find((x) => `mine:${x.id}` === value);
-      if (!s) return null;
-      file = mySoundFile(s);
-    } else return value;
+    if (!value.startsWith("mine:")) return value;
+    const s = soundLib.list.find((x) => `mine:${x.id}` === value);
+    if (!s) return null;
+    const file = mySoundFile(s);
     const src = await imageSrcFor(file, "sounds");
     attach(src, file);
     return src;
@@ -2729,7 +2673,7 @@
         s.url().then((url) => window.TrekPadd?.audition?.(url)).catch(() => toast(`Could not play ${s.name}`));
       });
       r.append(play);
-      // Removing one you added leaves the buttons using it their copy (the library's are files in the source folder).
+      // Removing one you added leaves the buttons using it their copy.
       if (s.mine) r.append(actionButton("Remove", "rose", async () => {
         await soundStore("readwrite", (st) => st.delete(s.mine.id)).catch(() => {});
         soundLib.list = soundLib.list.filter((x) => x.id !== s.mine.id);
@@ -2743,27 +2687,40 @@
   }
   $("#prefs-add-sound").addEventListener("click", () => $("#prefs-sound-file").click());
   $("#prefs-sound-find").addEventListener("input", () => renderSounds());
-  $("#prefs-sound-file").addEventListener("change", async (e) => {
+  $("#prefs-add-folder").addEventListener("click", () => $("#prefs-sound-folder").click());
+  /** Bring sound files in: each audio file (a folder's, all through its subfolders) once, by its name. */
+  async function addSounds(files) {
+    const have = new Set(soundLib.list.map((s) => s.file.toLowerCase()));
     const added = [];
-    for (const file of e.target.files) {
-      if (file.size > SOUND_MAX) {
-        toast(`${file.name} is over 30 MB: try a shorter clip, or MP3`);
-        continue;
-      }
+    let big = 0, same = 0;
+    for (const file of files) {
+      if (!/\.(mp3|wav|ogg|m4a|flac)$/i.test(file.name)) continue; // a folder's pictures, notes and so on
+      if (file.size > SOUND_MAX) { big++; continue; }
+      if (have.has(file.name.toLowerCase())) { same++; continue; }
+      have.add(file.name.toLowerCase());
       added.push({ id: Math.random().toString(36).slice(2, 10), name: stem(file.name), file: file.name, type: file.type || typeOf(file.name), blob: file });
     }
-    e.target.value = "";
-    if (!added.length) return;
-    try {
-      await soundStore("readwrite", (st) => { for (const s of added) st.put(s); });
-    } catch (err) {
-      toast(`Could not keep the sound: ${err?.message || err}`);
-      return;
+    if (added.length) {
+      try {
+        await soundStore("readwrite", (st) => { for (const s of added) st.put(s); });
+      } catch (err) {
+        toast(`Could not keep the sounds: ${err?.message || err}`);
+        return;
+      }
+      soundLib.list = [...soundLib.list, ...added].sort(byName);
+      renderSounds();
+      renderInspector();
     }
-    soundLib.list = [...soundLib.list, ...added].sort(byName);
-    renderSounds();
-    renderInspector();
-  });
+    const notes = [big && `${big} over 30 MB`, same && `${same} already here`].filter(Boolean);
+    if (files.length > 1 || notes.length) toast(`Added ${added.length} sound${added.length === 1 ? "" : "s"}${notes.length ? ` (left out: ${notes.join(", ")})` : ""}`);
+  }
+  for (const id of ["#prefs-sound-file", "#prefs-sound-folder"]) {
+    $(id).addEventListener("change", async (e) => {
+      const files = [...e.target.files];
+      e.target.value = "";
+      await addSounds(files);
+    });
+  }
 
   /** A row of color swatches. With mark, the ring moves to a picked swatch (for fields whose panel isn't rebuilt). */
   function swatches(current, allowAuto, onPick, { autoTitle, mark } = {}) {

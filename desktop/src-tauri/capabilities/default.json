@@ -22,7 +22,6 @@
     "allow-window-file",
     "allow-builder-windows",
     "allow-designer",
-    "allow-start-screen-source",
-    "allow-designer-sound"
+    "allow-start-screen-source"
   ]
 }

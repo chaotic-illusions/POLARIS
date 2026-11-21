@@ -94,12 +94,15 @@
       </section>
       <section id="prefs-tab-sounds" role="tabpanel" hidden>
       <h2>Sounds</h2>
-      <p class="note">Your sound effects and voice clips (MP3, WAV, OGG, M4A or FLAC, up to 30 MB each), kept in POLARIS for every project.
+      <p class="note">Your sound effects and voice clips (MP3, WAV, OGG, M4A or FLAC, up to 30 MB each), kept in POLARIS for every project:
+        add them a few at a time, or a whole folder (every sound in it and its subfolders).
         Click one to hear it. A button's Sound when clicked (its panel, under Action) offers them all and plays what you choose;
         a button using one carries the file in its project, so published sites have it too.</p>
       <div class="prefs-actions">
         <button type="button" class="pill orange" id="prefs-add-sound">Add sound</button>
+        <button type="button" class="pill orange" id="prefs-add-folder">Add folder</button>
         <input type="file" id="prefs-sound-file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" multiple hidden>
+        <input type="file" id="prefs-sound-folder" webkitdirectory multiple hidden>
         <label class="prefs-set">Find <input type="search" id="prefs-sound-find" placeholder="name or kind" autocomplete="off"></label>
         <span id="prefs-sound-count"></span>
       </div>
