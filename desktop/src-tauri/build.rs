@@ -3,7 +3,7 @@
 /// every command. capabilities/default.json grants them to the builder window only.
 const COMMANDS: &[&str] = &[
     "open_site", "open_path", "launch_file", "save_site", "save_site_as", "export_site", "show_folder", "preview",
-    "read_font", "choose_font", "new_window", "window_file", "builder_windows", "designer", "start_screen_source",
+    "read_font", "choose_font", "new_window", "window_file", "builder_windows", "designer", "start_screen_source", "designer_sound",
 ];
 
 fn main() {

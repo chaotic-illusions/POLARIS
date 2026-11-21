@@ -373,6 +373,23 @@ async fn start_screen_source() -> Option<String> {
     fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builder/start-screen.lcars")).ok()
 }
 
+/// A file of the designer's sound library, audio/ in the source folder (TrekCore's
+/// clean effects in clean/, listed in manifest.csv; local only, never shipped), so a
+/// debug build offers those sounds. A release build gets nothing.
+#[tauri::command]
+async fn designer_sound(path: String) -> Result<tauri::ipc::Response, String> {
+    if !cfg!(debug_assertions) {
+        return Err("not in this build".into());
+    }
+    let rel = safe_relative(&path)?;
+    let first = rel.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned()).unwrap_or_default();
+    if !(path == "manifest.csv" || first == "clean") {
+        return Err(format!("not a library sound: {path}"));
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../audio");
+    fs::read(root.join(rel)).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
 /// How many builder windows are open (closing the last one keeps its work for next time).
 #[tauri::command]
 async fn builder_windows(app: AppHandle) -> usize {
@@ -543,6 +560,7 @@ fn content_type(path: &str) -> &'static str {
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "ogg" => "audio/ogg",
+        "flac" => "audio/flac",
         "m4a" => "audio/mp4",
         "otf" => "font/otf",
         "ttf" => "font/ttf",
@@ -647,7 +665,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_site, open_path, launch_file, save_site, save_site_as, export_site, show_folder, preview, read_font,
             choose_font, new_window, window_file, builder_windows, designer,
-            start_screen_source
+            start_screen_source, designer_sound
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();

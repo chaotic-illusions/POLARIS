@@ -325,6 +325,8 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
   background: #0b0b12; color: #ddd; font: inherit; text-transform: uppercase; letter-spacing: 0;
 }
 .prefs-actions .pill:disabled { opacity: 0.35; cursor: default; }
+#prefs-sound-find { min-width: 240px; padding: 4px 10px; border: 1px solid #333; border-radius: 10px; background: #0b0b12; color: #ddd; font: inherit; }
+#prefs-sound-count { margin-left: auto; font-size: 17px; }
 .prefs-tabs { display: flex; gap: 6px; margin: 12px 0 2px; }
 .prefs-tabs .pill { font-size: 19px; padding: 0.3em 1.4em; background: var(--orange); }
 .prefs-tabs .pill[aria-selected="false"] { background: #333; color: var(--peach); }
