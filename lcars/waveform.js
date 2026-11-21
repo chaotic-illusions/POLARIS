@@ -39,7 +39,10 @@
  * CSS variables (--lcars-<name>) when lcars/palette.css is loaded, so a page
  * can restyle them. The element is 160px tall unless sized otherwise. It
  * stops animating while off screen, and with reduced motion turned on in the
- * operating system it holds still.
+ * operating system it holds still. Its motion is worked out from the time
+ * (from a seed for the voice's random syllables), so it shows as it is at any
+ * moment, earlier ones too (the POLARIS preview moves the page's clock back
+ * and forth).
  *
  * A plain script (not a module), so pages work when opened from disk.
  */
@@ -83,6 +86,9 @@
     };
   }
 
+  /** A random number for (seed, a, b), the same every time it's asked. */
+  const hashed = (seed, a, b) => seeded((seed ^ Math.imul(a + 1, 0x9e3779b1) ^ Math.imul(b + 1, 0x85ebca77)) >>> 0)();
+
   let count = 0;
 
   const el = (name, attrs = {}) => {
@@ -111,6 +117,8 @@
       this.visible = true;
       this.raf = 0;
       this.dice = Math.floor(Math.random() * 2 ** 31); // the seed for pattern="random", kept while the page is open
+      this.voiceSeed = Math.floor(Math.random() * 2 ** 32); // the voice's syllables and flicker
+      this.t0 = performance.now();
       this.tick = this.tick.bind(this);
       this.onMotion = () => this.build();
     }
@@ -243,15 +251,11 @@
         const u = ((i + 0.5) / n) * 2 - 1;
         const rect = el("rect", { x: r2(x0 + step * (i + 0.5) - bw / 2), width: r2(bw) });
         group.append(rect);
-        this.bars.push({ rect, u, env: env(u), jit: Math.random(), phase: Math.random() * Math.PI * 2 });
+        this.bars.push({ rect, u, env: env(u), i, phase: Math.random() * Math.PI * 2 });
       }
       this.svg.append(group);
 
       // Start from the still shape (also what reduced motion shows).
-      this.level = 0.5;
-      this.target = 0.8;
-      this.hold = 0;
-      this.t = 0;
       this.draw(() => 0.92);
       this.play();
     }
@@ -317,10 +321,43 @@
       return this.bars.length && this.opts?.motion !== "still" && this.opts?.speed > 0 && !reduced.matches;
     }
 
+    /**
+     * The voice's loudness at t seconds: syllables at random loudness, now and
+     * then a pause, each easing towards its level (quicker up than down).
+     */
+    voiceLevel(t) {
+      const S = (this.syllables ||= []);
+      if (!S.length) S.push({ at: 0, from: 0.5, ...this.syllable(0) });
+      while (S[S.length - 1].at + S[S.length - 1].hold <= t) {
+        const p = S[S.length - 1], end = p.at + p.hold;
+        S.push({ at: end, from: this.ease(p, end), ...this.syllable(S.length) });
+      }
+      let lo = 0, hi = S.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (S[mid].at <= t) lo = mid; else hi = mid - 1;
+      }
+      return this.ease(S[lo], t);
+    }
+    syllable(n) {
+      const r = (k) => hashed(this.voiceSeed, n, k);
+      const pause = r(0) < 0.16;
+      return { to: pause ? 0.06 + r(1) * 0.08 : 0.5 + r(1) * 0.5, hold: pause ? 0.15 + r(2) * 0.4 : 0.07 + r(2) * 0.2 };
+    }
+    ease(s, t) {
+      const tau = s.to > s.from ? 0.04 : 0.1;
+      return s.to + (s.from - s.to) * Math.exp(-Math.max(0, t - s.at) / tau);
+    }
+    /** A line's flicker at t seconds: smooth random wander around a half. */
+    jitter(b, t) {
+      const x = t / 0.06, k = Math.floor(x), f = x - k, s = f * f * (3 - 2 * f);
+      const a = hashed(this.voiceSeed, b.i + 1000, k), c = hashed(this.voiceSeed, b.i + 1000, k + 1);
+      return 0.5 + (a + (c - a) * s - 0.5) * 0.5;
+    }
+
     play() {
       const run = this.isConnected && this.visible && this.animated;
       if (run && !this.raf) {
-        this.last = performance.now();
         this.raf = requestAnimationFrame(this.tick);
       } else if (!run && this.raf) {
         cancelAnimationFrame(this.raf);
@@ -329,13 +366,10 @@
       if (!this.animated) this.draw(() => 0.92);
     }
 
-    tick(now) {
+    tick() {
       this.raf = 0;
       if (!this.isConnected || !this.visible || !this.animated) return;
-      const dt = Math.min(0.1, (now - this.last) / 1000) * this.opts.speed;
-      this.last = now;
-      const t = (this.t += dt);
-      const ease = (tau) => 1 - Math.exp(-dt / tau);
+      const t = (Math.max(0, performance.now() - this.t0) / 1000) * this.opts.speed;
 
       switch (this.opts.motion) {
         case "pulse": {
@@ -348,17 +382,9 @@
           break;
         default: {
           // Speech: bursts of syllables at random loudness, now and then a pause.
-          this.hold -= dt;
-          if (this.hold <= 0) {
-            const pause = Math.random() < 0.16;
-            this.target = pause ? 0.06 + Math.random() * 0.08 : 0.5 + Math.random() * 0.5;
-            this.hold = pause ? 0.15 + Math.random() * 0.4 : 0.07 + Math.random() * 0.2;
-          }
-          this.level += (this.target - this.level) * ease(this.target > this.level ? 0.04 : 0.1);
-          const level = this.level;
-          for (const b of this.bars) b.jit += (Math.random() - b.jit) * ease(0.05);
+          const level = this.voiceLevel(t);
           this.draw((b) => level * (0.82 + 0.12 * Math.sin(b.u * 5.3 + t * 8.1 + 0.4) +
-            0.1 * Math.sin(b.u * 11.7 - t * 13.3 + 1.3) + 0.24 * (b.jit - 0.5)));
+            0.1 * Math.sin(b.u * 11.7 - t * 13.3 + 1.3) + 0.24 * (this.jitter(b, t) - 0.5)));
         }
       }
       this.raf = requestAnimationFrame(this.tick);

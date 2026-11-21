@@ -70,19 +70,19 @@
 
     const state = {
       seed: (Math.random() * 2 ** 32) >>> 0,
-      request: null, // what the next load of the page should do: { t, play, rate }
+      request: null, // what the next load of the page should do (after a Shuffle): { t, play, rate }
       clock: null,
       rate: 1,
       loop: false,
       dragging: false,
-      seeking: false,
+      wasPlaying: false,
     };
 
     // The page's clock finds the preview here (builder/preview-clock.js).
     window.PolarisPreview = {
       get seed() { return state.seed; },
       takeRequest() { const r = state.request; state.request = null; return r; },
-      attach(clock) { state.clock = clock; state.seeking = false; },
+      attach(clock) { state.clock = clock; },
       key: (key, shift) => onKey(key, shift),
     };
 
@@ -96,28 +96,28 @@
       } catch { /* another origin */ }
     });
 
-    /** Load the page again and go to t (ms from the opening's start), playing or paused. */
-    function seek(t, play, rate = state.rate) {
-      state.rate = rate;
-      state.request = { t: Math.max(0, Math.round(t)), play, rate };
-      state.clock = null;
-      state.seeking = true;
-      try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; }
-      paintSpeed();
-    }
     const now = () => state.clock?.state() ?? null;
-    const position = () => now()?.t ?? state.request?.t ?? 0;
+    const ready = () => { const s = now(); return s && s.t != null ? s : null; };
 
+    /** Go to t (ms from the opening's start), playing or paused. */
+    function seek(t, play) {
+      const s = ready();
+      if (!s) return;
+      state.clock.seek(Math.max(0, t));
+      play ? state.clock.play() : state.clock.pause();
+    }
     function togglePlay() {
-      const s = now();
-      if (!s || s.t == null) return;
+      const s = ready();
+      if (!s) return;
       s.playing ? state.clock.pause() : state.clock.play();
     }
     function stepBy(ms) {
-      const s = now();
-      if (!s || s.t == null) return;
-      if (ms > 0) state.clock.step(ms);
-      else seek(Math.max(0, s.t + ms), false);
+      if (ready()) state.clock.step(ms);
+    }
+    function setRate(r) {
+      state.rate = r;
+      state.clock?.setRate(r);
+      paintSpeed();
     }
     function onKey(key, shift) {
       const by = shift ? 250 : FRAME_MS;
@@ -140,68 +140,71 @@
     $("#stop").addEventListener("click", () => seek(0, false));
     $("#back").addEventListener("click", (e) => stepBy(e.shiftKey ? -250 : -FRAME_MS));
     $("#fwd").addEventListener("click", (e) => stepBy(e.shiftKey ? 250 : FRAME_MS));
+    // Another take of the random parts: the page loads again with a new seed, at the same place.
     $("#shuffle").addEventListener("click", () => {
-      state.seed = (Math.random() * 2 ** 32) >>> 0;
       const s = now();
-      seek(position(), s ? s.playing : true);
+      state.seed = (Math.random() * 2 ** 32) >>> 0;
+      state.request = { t: s?.t ?? 0, play: s ? s.playing : true, rate: state.rate };
+      state.clock = null;
+      try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; }
     });
     function setLoop(on) {
       state.loop = on;
       loopBtn.setAttribute("aria-pressed", String(on));
     }
     loopBtn.addEventListener("click", () => setLoop(!state.loop));
-    for (const b of document.querySelectorAll(".speed button")) {
-      b.addEventListener("click", () => {
-        const s = now();
-        seek(position(), s ? s.playing : true, Number(b.dataset.rate));
-      });
-    }
+    for (const b of document.querySelectorAll(".speed button")) b.addEventListener("click", () => setRate(Number(b.dataset.rate)));
     function paintSpeed() {
       for (const b of document.querySelectorAll(".speed button")) b.setAttribute("aria-pressed", String(Number(b.dataset.rate) === state.rate));
     }
 
-    // Scrubbing: the page follows (a load at a time), paused where you let go.
-    let pending = null;
-    const follow = () => {
-      if (state.seeking || now()?.busy) return;
-      if (pending == null) return;
-      const t = pending;
-      pending = null;
-      seek(t, false);
-    };
-    scrub.addEventListener("pointerdown", () => { state.dragging = true; });
+    // Scrubbing: the page follows as you drag, paused; it plays on from where you let go if it was playing.
+    scrub.addEventListener("pointerdown", () => {
+      const s = ready();
+      state.dragging = true;
+      state.wasPlaying = !!s?.playing;
+      if (s?.playing) state.clock.pause();
+    });
     scrub.addEventListener("input", () => {
-      pending = Number(scrub.value);
-      paintTime(pending);
-      follow();
+      const v = Number(scrub.value);
+      paintTime(v);
+      if (ready()) state.clock.seek(v);
     });
     scrub.addEventListener("change", () => {
+      const v = Number(scrub.value);
+      if (ready()) {
+        state.clock.seek(v);
+        if (state.dragging && state.wasPlaying) state.clock.play();
+      }
       state.dragging = false;
-      pending = Number(scrub.value);
-      state.seeking = false; // the last place wins
-      follow();
+    });
+    addEventListener("pointerup", () => {
+      if (!state.dragging) return;
+      state.dragging = false;
+      if (state.wasPlaying) state.clock?.play();
     });
 
     function paintTime(t, s = now()) {
-      const end = Math.max(1000, Math.round((s?.end || 0)));
-      time.innerHTML = `${Math.round(t)} MS <small>/ ${end} MS</small>`;
+      const end = s?.timeline ? `${Math.max(1000, Math.round(s.end))} MS` : "NO OPENING";
+      time.innerHTML = `${Math.round(t)} MS <small>/ ${end}</small>`;
     }
 
     // Keep the controls in step with the page.
     function tick() {
-      const s = now();
-      document.body.classList.toggle("busy", state.seeking || !!s?.busy);
-      if (s && s.t != null) {
-        const max = Math.max(1000, Math.round(s.end)) + TAIL;
+      const s = ready();
+      document.body.classList.toggle("busy", !s);
+      if (s) {
+        // A page without an opening: as far as it has played (at least 10 s), for its effects.
+        const max = s.timeline ? Math.max(1000, Math.round(s.end)) + TAIL : Math.max(10000, Math.round(s.t));
         if (Number(scrub.max) !== max) scrub.max = String(max);
         if (!state.dragging) {
           scrub.value = String(Math.min(max, Math.round(s.t)));
           paintTime(s.t, s);
         }
         playBtn.textContent = s.playing ? "❚❚ PAUSE" : "▶ PLAY";
-        if (state.loop && s.playing && s.t > Math.max(1000, s.end) + TAIL) seek(0, true);
+        if (s.rate !== state.rate) { state.rate = s.rate; paintSpeed(); }
+        if (state.loop && s.playing && s.t > Math.max(1000, s.end) + TAIL) state.clock.seek(0);
       }
-      if (!state.seeking) follow();
       requestAnimationFrame(tick);
     }
     paintSpeed();

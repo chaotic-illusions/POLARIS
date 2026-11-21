@@ -45,10 +45,17 @@
  * comes in later, step by step after the content: bars, buttons and gauges
  * grow along their long side, then their words key on; text types, pictures
  * scan in, and so on. Steps share out the time after the frame (with sound,
- * so the last one finishes with it), or start at a time of their own; each
- * step's pieces finish before the next step starts, quicker if they must:
- *   <div class="lcars-board" data-flow="console" data-flow-steps='{"2": {"at": 3.5, "sound": "sounds/beep.mp3"}}'>
- * ("at" in seconds from the start of the opening; "sound" plays as the step comes in).
+ * so the last one finishes with it); each step's pieces finish before the
+ * next step starts, quicker if they must.
+ *
+ * Timing: the opening's parts are the frame, the content and each step. Each
+ * can have its own delay (ms after the part before it starts: the content's
+ * from the frame's start, step 1's from the content's) and length (ms); left
+ * out, they're "auto", timed as above. A part with a length of its own takes
+ * that long whatever the others do, so a short delay lets parts overlap.
+ *   data-flow-steps='{"frame": {"length": 2500}, "2": {"delay": 400, "length": 600, "sound": "sounds/beep.mp3"}}'
+ * ("sound" plays as a step comes in; "at", in seconds from the start, is a
+ * step's start from before delays, still honoured).
  *
  * Your own sound: data-flow-sound="sounds/opening.mp3" plays that file
  * instead of the power-up, and the opening takes as long as it does (the
@@ -623,7 +630,7 @@
     if (sound) p.timed = true; // the opening takes as long as the sound, whether or not the browser lets it play
     if (!sound && !stepSounds.length && !layers.length) {
       announce(root);
-      return go(p, run);
+      return go(p, run, {});
     }
     Promise.all([
       !sound ? false : own ? sounds.ready(800, own) : sounds.ready(800),
@@ -640,14 +647,10 @@
         // Its length sets the opening's even if the browser holds the sound back (it plays once it may).
         const buf = sounds.files.get(own);
         if (buf) p.soundEnd = buf.duration * 1000 + 50;
-        if (ok && buf) run.cleanup.push(playFile(own));
       } else if (sound && ok && sounds.buffers) {
         presses = pressPlan();
-        run.cleanup.push(powerUp(presses));
       }
-      // Layered sounds start on the same clock, each at its own time.
-      for (const l of layers) run.cleanup.push(playFile(l.sound, l.at));
-      go(p, run, presses);
+      go(p, run, { ok, own: sound ? own : "", presses, layers });
     });
   }
 
@@ -657,35 +660,56 @@
     if (!list) try { list = JSON.parse(root.dataset.flowLayers || "[]"); } catch { list = []; }
     return (Array.isArray(list) ? list : [])
       .filter((l) => l && typeof l.sound === "string" && l.sound)
-      .map((l) => ({ sound: l.sound, at: Number.isFinite(Number(l.at)) && Number(l.at) > 0 ? Number(l.at) : 0 }));
+      .map((l) => ({ sound: l.sound, at: Number.isFinite(Number(l.at)) && Number(l.at) > 0 ? Number(l.at) : 0,
+        name: typeof l.name === "string" ? l.name : "" }));
   }
 
-  /** data-flow-steps (or opts.steps): { "2": { at: seconds, sound: url } }, read safely. */
+  /**
+   * data-flow-steps (or opts.steps): the parts' timing, read safely. Keys "frame",
+   * "content" and the step numbers, each { delay, length } in ms (and a step's
+   * sound, and its "at" in seconds from before delays); anything left out is auto.
+   */
   function stepConfig(root, opts) {
     let conf = opts.steps;
     if (!conf) try { conf = JSON.parse(root.dataset.flowSteps || "{}"); } catch { conf = {}; }
+    const num = (v) => (v !== "" && v != null && Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : null);
     const out = {};
     for (const [n, c] of Object.entries(conf || {})) {
-      if (!/^\d+$/.test(n) || !c || typeof c !== "object") continue;
-      const at = Number(c.at);
-      out[n] = {
-        at: c.at !== "" && c.at != null && Number.isFinite(at) && at >= 0 ? at : null,
-        sound: typeof c.sound === "string" ? c.sound : "",
-      };
+      if (!/^(\d+|frame|content)$/.test(n) || !c || typeof c !== "object") continue;
+      out[n] = { at: num(c.at), delay: num(c.delay), length: num(c.length), sound: typeof c.sound === "string" ? c.sound : "",
+        name: typeof c.name === "string" ? c.name : "" };
     }
     return out;
   }
 
   /**
-   * The build itself, from now. Timed to the sound, the build's own clock runs
-   * at whatever pace makes the frame stand as the power peaks; presses (from
-   * the sound) make finished pieces flare.
+   * How long things take when nothing says otherwise (ms): the baseline every
+   * part's own delay and length adjusts from. Without sound the frame draws at
+   * its style's speed, so its length depends on the page.
    */
-  function go(p, run, presses = null) {
+  const AUTO = {
+    contentAfterFrame: 100, // the content starts this long after the frame stands
+    stepEvery: 700,         // without sound: steps come this often after the content
+    lastStep: 900,          // without sound: the last step's time
+  };
+
+  /**
+   * The build itself, from now. Everything is set up at once, timed from now:
+   * the frame is drawn from the time (frame()), every other part is an
+   * animation with its own delay, and the few things that just happen (a PADD
+   * starting) are cues, on from their time. So the whole opening can be shown
+   * as it is at any moment: render(t). Timed to the sound, the build's own
+   * clock runs at whatever pace makes the frame stand as the power peaks;
+   * presses (from the sound) make finished pieces flare.
+   * audio: { ok, own, presses, layers } from play().
+   */
+  function go(p, run, audio) {
     const { page, conf, endAll } = p;
+    const parts = p.steps || {};
     const soundEnd = p.soundEnd || SOUND_END;
-    const frameEnd = p.soundEnd ? Math.min(FRAME_END, soundEnd * 0.67) : FRAME_END;
-    const rate = p.timed && p.endAll > 0 ? p.endAll / frameEnd : 1; // build ms per real ms
+    const autoFrame = p.timed ? (p.soundEnd ? Math.min(FRAME_END, soundEnd * 0.67) : FRAME_END) : endAll;
+    const frameLen = Math.max(1, parts.frame?.length ?? autoFrame);
+    const rate = endAll > 0 ? endAll / frameLen : 1; // build ms per real ms
     const real = (t) => t / rate;
     if (conf.joints) { // elbows flare as they form
       for (const s of page.shapes.filter((q) => q.kind === "elbow")) {
@@ -701,49 +725,83 @@
         ));
       }
     }
-    if (presses) systemsOnline(p, run, presses, rate);
+    if (audio.presses) systemsOnline(p, run, audio.presses, rate);
 
+    // After the frame: the content, then each step, sharing the time to the sound's end (or brisk, without).
+    const autoAt = frameLen + AUTO.contentAfterFrame; // once the frame stands: drawn, and (a sheet opening) fully parted
+    const at = parts.content?.delay ?? autoAt;
+    const nums = [...new Set(page.stepped.map((s) => s.step))].sort((a, b) => a - b);
+    const tail = p.timed ? Math.max(200 * (nums.length + 1), soundEnd - autoAt) : 0;
+    const phase = p.timed ? tail / (nums.length + 1) : AUTO.stepEvery;
+    // The auto plan: steps evenly after the content (or at a time of their own, from before delays).
+    const base = nums.map((n, i) => (parts[n]?.at != null ? parts[n].at * 1000 : autoAt + (i + 1) * phase));
+    // Each part's auto length: until the next one starts in that plan (the last, until the sound ends),
+    // finishing in it, so the order shows. Delays of their own don't change it: parts may overlap.
+    const budget = (t) => {
+      const next = Math.min(...base.filter((w) => w > t + 50));
+      if (Number.isFinite(next)) return next - t;
+      return p.timed ? Math.max(phase, soundEnd - t) : AUTO.lastStep;
+    };
+    // Where each step starts: its delay after the part before it, or the auto plan.
+    let prev = at;
+    const starts = nums.map((n, i) => (prev = parts[n]?.delay != null ? prev + parts[n].delay : base[i]));
+
+    // Lay out as it ends up (the rails slid apart) while working out where things are, then back to the start.
+    frame(p, Infinity);
+    const contentLen = parts.content?.length;
+    const contentEnd = contentLen != null ? populate(page, run, contentLen, at, contentLen)
+      : nums.length ? populate(page, run, budget(autoAt), at, budget(autoAt))
+        : populate(page, run, p.timed ? phase : 0, at);
+    const stepEnds = nums.map((n, i) => {
+      const items = page.stepped.filter((s) => s.step === n);
+      return revealStep(items, run, parts[n]?.length ?? budget(base[i]), starts[i]);
+    });
+    frame(p, 0);
+
+    // The sound, as a plan that can start from any moment.
+    const plan = soundPlan(audio, nums.map((n, i) => ({ n, at: starts[i], sound: parts[n]?.sound || "", name: parts[n]?.name || "" })));
+
+    const render = (t) => {
+      let busy = frame(p, t * rate);
+      for (const c of run.cues) {
+        const on = t >= c.at;
+        if (on !== c.on) { c.on = on; on ? c.show() : c.hide(); }
+        if (!on) busy = true;
+      }
+      return busy;
+    };
+    const timeline = {
+      end: Math.round(Math.max(frameLen, contentEnd, ...stepEnds, p.timed ? soundEnd : 0, plan.end)),
+      parts: [
+        { id: "frame", label: "Frame", start: 0, length: Math.round(frameLen) },
+        { id: "content", label: "Content", start: Math.round(at), length: Math.round(Math.max(0, contentEnd - at)) },
+        ...nums.map((n, i) => ({ id: `step-${n}`, label: `Step ${n}`, start: Math.round(starts[i]), length: Math.round(Math.max(0, stepEnds[i] - starts[i])) })),
+      ],
+      sounds: plan.tracks,
+    };
+    let hush = () => {};
+    const sound = {
+      play(from = 0) { hush(); hush = playPlan(plan, from); },
+      stop() { hush(); hush = () => {}; },
+    };
+    run.cleanup.push(() => sound.stop());
+    // In the POLARIS preview, its clock runs the opening (drawing it at any moment, sound from any moment).
+    const clock = window.LcarsPreviewClock;
+    if (clock) return clock.opening({ render, sound, timeline });
+    sound.play(0);
     const t0 = performance.now();
     const tick = (now) => {
-      run.frame = frame(p, (now - t0) * rate) ? requestAnimationFrame(tick) : 0;
+      run.frame = render(now - t0) ? requestAnimationFrame(tick) : 0;
     };
     run.frame = requestAnimationFrame(tick);
-    const at = real(endAll) + 100; // once the frame stands: drawn, and (a sheet opening) fully parted
-    // After the frame: the content, then each step, sharing the time to the sound's end (or brisk, without).
-    const nums = [...new Set(page.stepped.map((s) => s.step))].sort((a, b) => a - b);
-    const tail = p.timed ? Math.max(200 * (nums.length + 1), soundEnd - at) : 0;
-    const phase = p.timed ? tail / (nums.length + 1) : 700;
-    const whens = nums.map((n, i) => (p.steps[n]?.at != null ? p.steps[n].at * 1000 : at + (i + 1) * phase));
-    // Each part has until the next one starts (the last, until the sound ends), and finishes in it, so the order shows.
-    const budget = (t) => {
-      const next = Math.min(...whens.filter((w) => w > t + 50));
-      if (Number.isFinite(next)) return next - t;
-      return p.timed ? Math.max(phase, soundEnd - t) : 900;
-    };
-    // Where everything falls, in ms from the start ("lcars-flow:timeline" on the page, for the POLARIS preview).
-    const last = nums.length ? whens.at(-1) : at;
-    page.root.dispatchEvent(new CustomEvent("lcars-flow:timeline", {
-      bubbles: true,
-      detail: {
-        frame: Math.round(real(endAll)), content: at, end: Math.round(Math.max(p.timed ? soundEnd : 0, last + budget(last))),
-        steps: nums.map((n, i) => ({ step: n, at: Math.round(whens[i]) })),
-      },
-    }));
-    if (nums.length) run.timers.push(setTimeout(() => populate(page, run, budget(at), 0, budget(at)), at));
-    else run.timers.push(setTimeout(() => populate(page, run, p.timed ? phase : 0), at));
-    nums.forEach((n, i) => {
-      const when = whens[i];
-      const items = page.stepped.filter((s) => s.step === n);
-      run.timers.push(setTimeout(() => revealStep(items, run, budget(when)), when));
-      if (p.steps[n]?.sound) run.cleanup.push(playFile(p.steps[n].sound, when / 1000));
-    });
   }
 
   /**
    * A step's pieces come in: shapes grow along their long side, then their
-   * words and pictures; the rest as content does. All of it within span ms.
+   * words and pictures; the rest as content does. All of it within span ms,
+   * from at ms. Returns when it's done.
    */
-  function revealStep(items, run, span) {
+  function revealStep(items, run, span, at = 0) {
     const grow = clamp(span * 0.4, 150, 600);
     const sub = { labels: [], content: [] };
     for (const s of items) {
@@ -755,13 +813,13 @@
       const r = s.el.getBoundingClientRect();
       const from = r.width >= r.height ? "inset(-2px 100% -2px -2px)" : "inset(-2px -2px 100% -2px)";
       run.anims.push(s.el.animate([{ clipPath: from }, { clipPath: "inset(-2px)" }],
-        { duration: grow, easing: "cubic-bezier(0.3, 0, 0.2, 1)", fill: "backwards" }));
+        { duration: grow, delay: at, easing: "cubic-bezier(0.3, 0, 0.2, 1)", fill: "backwards" }));
       sub.labels.push(...s.labels.map((el) => ({ el, by: "show" })));
       if (s.pic) sub.content.push({ el: s.pic, how: "scan" });
     }
     const shapes = items.some((s) => s.role === "shape");
     const rest = Math.max(150, shapes ? span - grow : span);
-    populate(sub, run, rest, shapes ? grow : 0, rest);
+    return Math.max(shapes ? at + grow : at, populate(sub, run, rest, at + (shapes ? grow : 0), rest));
   }
 
   /**
@@ -790,9 +848,11 @@
   /**
    * Words key on in reading order; then each piece of content comes up its own
    * way. span: ms to spread it over (to finish with the sound), or 0 for brisk.
-   * fit: ms it must all be done in (a step's turn), shortening each piece's way in.
+   * lead: ms from now it starts. fit: ms it must all be done in (a step's
+   * turn), shortening each piece's way in. Returns when it's all done (ms from now).
    */
   function populate(page, run, span = 0, lead = 0, fit = 0) {
+    let done = lead;
     const n = page.content.length;
     const room = fit * 0.85;
     const labelStep = fit ? clamp((room * 0.3) / Math.max(1, page.labels.length), 6, 70)
@@ -810,25 +870,37 @@
         run.anims.push(el.animate(
           [{ color: "transparent" }, { color: c, offset: 0.3 }, { color: "transparent", offset: 0.45 }, { color: c }],
           { duration: labelFor, delay: lead + i * (labelStep || 22), fill: "backwards" }));
+        done = Math.max(done, lead + i * (labelStep || 22) + labelFor);
       } else {
         el.style.visibility = "";
         run.anims.push(el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0, offset: 0.45 }, { opacity: 1 }],
           { duration: labelFor, delay: lead + i * (labelStep || 18), fill: "backwards" }));
+        done = Math.max(done, lead + i * (labelStep || 18) + labelFor);
       }
     });
     reading(page.content).forEach(({ el, how, r }, i) => {
-      el.style.visibility = "";
       const delay = lead + (fit ? 0 : 100) + i * contentStep;
-      const wipe = (from, ms, easing = "linear") =>
+      const wipe = (from, ms, easing = "linear") => {
         run.anims.push(el.animate([{ clipPath: from }, { clipPath: "inset(-2px)" }], { duration: dur(ms), delay, easing, fill: "backwards" }));
+        done = Math.max(done, delay + dur(ms));
+      };
+      if (how === "padd") {
+        const start = () => { el.style.visibility = ""; el.restart?.() ?? el.querySelector("trek-padd")?.restart?.(); };
+        // In an opening it starts on its cue (shown from its time on); otherwise now.
+        if (run.cues) run.cues.push({ el, at: delay, on: false, show: start, hide: () => { el.style.visibility = "hidden"; } });
+        else start();
+        done = Math.max(done, delay);
+        return;
+      }
+      el.style.visibility = ""; // hidden by its animation until its time
       switch (how) {
-        case "padd": el.restart?.() ?? el.querySelector("trek-padd")?.restart?.(); break;
         case "type": wipe("inset(-2px 100% -2px -2px)", 420, "steps(14, end)"); break; // left to right, in steps, like typing
         case "rows": wipe("inset(-2px -2px 100% -2px)", 700, `steps(${Math.max(3, Math.round(r.height / 14))}, end)`); break;
         case "grow": wipe("inset(-2px 50% -2px 50%)", 500, "cubic-bezier(0.3, 0, 0.2, 1)"); break;
-        default: scan(el, r, delay, run, dur(900)); // pictures
+        default: scan(el, r, delay, run, dur(900)); done = Math.max(done, delay + dur(900) + 30); // pictures
       }
     });
+    return done;
   }
 
   /** A picture scans in from the top behind a bright line. */
@@ -843,8 +915,9 @@
     host.append(line);
     const a = line.animate([{ opacity: 1, transform: "translateY(0)" }, { opacity: 1, transform: `translateY(${r.height}px)`, offset: 0.97 },
       { opacity: 0, transform: `translateY(${r.height}px)` }], { duration: ms + 30, delay, easing: "linear" });
-    a.finished.then(() => line.remove(), () => line.remove());
-    run.cleanup.push(() => line.remove());
+    run.anims.push(a);
+    if (run.cues) run.cleanup.push(() => line.remove()); // kept while the opening can be gone back over
+    else a.finished.then(() => line.remove(), () => line.remove());
   }
 
   /* ---------------- sound ---------------- */
@@ -936,45 +1009,91 @@
     return hits;
   }
 
-  /** Play a sound file of the page's own (loaded by sounds.ready) in `at` seconds. Returns a function that stops it. */
-  function playFile(url, at = 0) {
-    const { ctx } = sounds, buf = sounds.files.get(url);
-    if (!ctx || !buf || ctx.state !== "running") return () => {};
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(ctx.currentTime + 0.05 + at);
-    return () => { try { src.stop(); } catch { /* done already */ } };
+  const fileName = (url) => decodeURIComponent(String(url).split(/[?#]/)[0].split("/").pop() || "sound");
+
+  /**
+   * The opening's sound as a plan: every clip and tick, in ms from the start
+   * (sounds start 50 ms in), and a track for each sound (for the preview's
+   * timeline). The power-up: the rise, the computer processing under its top
+   * and as the power peaks (quieter than the peak, about 5 dB, with no fade;
+   * its closing trill is halved in the file), and the key presses.
+   * audio: { ok, own, presses, layers }; steps: [{ n, at (ms), sound }].
+   */
+  function soundPlan(audio, steps) {
+    const plan = { clips: [], ticks: [], tracks: [], end: 0 };
+    const clip = (buf, at, gain = 1, limited = false) => {
+      if (audio.ok && buf) plan.clips.push({ buf, at, gain, limited });
+      return buf ? at + buf.duration * 1000 : at;
+    };
+    const track = (id, label, start, end) => {
+      plan.tracks.push({ id, label, start: Math.round(start), length: Math.round(end - start) });
+      plan.end = Math.max(plan.end, end);
+    };
+    const B = sounds.buffers;
+    if (audio.own) {
+      const buf = sounds.files.get(audio.own);
+      if (buf) track("lead", fileName(audio.own), 50, clip(buf, 50));
+    } else if (audio.presses && B) {
+      let end = clip(B.base, 50, 1, true);
+      end = Math.max(end, clip(B.proc3, 1900, 0.7, true), clip(B.proc, 3100, 0.5, true));
+      for (const h of audio.presses) {
+        const at = 50 + h.t * 1000;
+        if (h.tick) { if (audio.ok) plan.ticks.push({ at, freq: h.tick, gain: h.gain }); }
+        else end = Math.max(end, clip(B[h.key], at, h.gain, true));
+      }
+      track("power-up", "Power-up", 50, end);
+    }
+    (audio.layers || []).forEach((l, i) => {
+      const buf = sounds.files.get(l.sound), at = 50 + l.at * 1000;
+      if (buf) track(`layer-${i + 1}`, l.name || fileName(l.sound), at, clip(buf, at));
+    });
+    for (const s of steps) {
+      const buf = s.sound && sounds.files.get(s.sound);
+      if (buf) track(`step-${s.n}-sound`, `Step ${s.n}: ${s.name || fileName(s.sound)}`, 50 + s.at, clip(buf, 50 + s.at));
+    }
+    return plan;
   }
 
-  /** Play a power-up now, with these presses (pressPlan). Returns a function that fades it out. */
-  function powerUp(presses = pressPlan()) {
-    const { ctx, buffers: B } = sounds;
+  /**
+   * Play a sound plan from `from` ms into it (a clip already under way starts
+   * part way in). Returns a function that fades it all out.
+   */
+  function playPlan(plan, from = 0) {
+    const { ctx } = sounds;
+    if (!ctx || ctx.state !== "running" || (!plan.clips.length && !plan.ticks.length)) return () => {};
+    const now = ctx.currentTime, T0 = now - from / 1000; // the opening's start, on the sound's clock
+    const out = ctx.createGain();
+    out.connect(ctx.destination);
     const master = ctx.createGain();
-    const limit = ctx.createDynamicsCompressor(); // keeps overlapping presses from clipping
+    const limit = ctx.createDynamicsCompressor(); // keeps the power-up's overlapping presses from clipping
     limit.threshold.value = -3;
     limit.knee.value = 0;
     limit.ratio.value = 20;
     limit.attack.value = 0.002;
     limit.release.value = 0.1;
-    master.connect(limit).connect(ctx.destination);
-    const T0 = ctx.currentTime + 0.05, nodes = [];
-    const play = (buf, at, gain) => {
+    master.connect(limit).connect(out);
+    const nodes = [];
+    for (const c of plan.clips) {
+      const t = T0 + c.at / 1000, late = now - t;
+      if (late >= c.buf.duration) continue;
       const src = ctx.createBufferSource(), g = ctx.createGain();
-      src.buffer = buf;
-      g.gain.value = gain;
-      src.connect(g).connect(master);
-      src.start(T0 + at);
+      src.buffer = c.buf;
+      g.gain.value = c.gain;
+      src.connect(g).connect(c.limited ? master : out);
+      if (late > 0) src.start(now, late);
+      else src.start(t);
       nodes.push(src);
-    };
-    /** A clean tick: a tone and its octave, 2 ms attack, fast decay. */
-    const tick = (at, freq, gain) => {
-      const env = ctx.createGain(), t = T0 + at;
+    }
+    // A clean tick: a tone and its octave, 2 ms attack, fast decay.
+    for (const k of plan.ticks) {
+      const t = T0 + k.at / 1000;
+      if (t < now) continue;
+      const env = ctx.createGain();
       env.gain.setValueAtTime(0, t);
-      env.gain.linearRampToValueAtTime((0.4 * gain) / 1.35, t + 0.002);
+      env.gain.linearRampToValueAtTime((0.4 * k.gain) / 1.35, t + 0.002);
       env.gain.setTargetAtTime(0, t + 0.002, 0.008);
       env.connect(master);
-      for (const [f, v] of [[freq, 1], [freq * 2, 0.35]]) {
+      for (const [f, v] of [[k.freq, 1], [k.freq * 2, 0.35]]) {
         const o = ctx.createOscillator(), og = ctx.createGain();
         o.frequency.value = f;
         og.gain.value = v;
@@ -983,19 +1102,11 @@
         o.stop(t + 0.03);
         nodes.push(o);
       }
-    };
-    play(B.base, 0, 1);
-    // The computer starts processing under the top of the rise, then gets busy as the power peaks,
-    // steady right to the end: no fades.
-    play(B.proc3, 1.85, 0.7);
-    play(B.proc, 3.05, 0.5); // quieter than the power-up's peak (about 5 dB), with no fade; its closing trill is halved in the file
-    for (const h of presses) h.tick ? tick(h.t, h.tick, h.gain) : play(B[h.key], h.t, h.gain);
+    }
     return () => {
-      master.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
-      setTimeout(() => {
-        for (const n of nodes) try { n.stop(); } catch { /* not started, or already done */ }
-        master.disconnect();
-      }, 250);
+      const t = ctx.currentTime;
+      out.gain.setTargetAtTime(0, t, 0.04);
+      for (const n of nodes) try { n.stop(t + 0.25); } catch { /* done already */ }
     };
   }
 
@@ -1178,11 +1289,12 @@
 
   /** A run's bookkeeping; putting the page back as it was when it's stopped. */
   function start(page) {
-    const run = { frame: 0, anims: [], timers: [], cleanup: [] };
+    const run = { frame: 0, anims: [], timers: [], cleanup: [], cues: [] };
     run.cleanup.push(() => {
       for (const s of page.shapes) s.el.style.clipPath = "";
       for (const { el } of page.labels) { el.style.color = ""; el.style.visibility = ""; }
       for (const { el } of page.content) el.style.visibility = "";
+      for (const c of run.cues) c.el.style.visibility = ""; // a PADD whose time hadn't come
       for (const s of page.stepped || []) {
         s.el.style.visibility = "";
         for (const l of s.labels) l.style.visibility = "";

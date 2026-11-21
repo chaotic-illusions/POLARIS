@@ -2813,9 +2813,11 @@
     let attrs = ` data-flow="${esc(page.flow)}"`;
     if (page.sound && page.soundFile) attrs += ` data-flow-sound="${esc(url(page.soundFile))}"`;
     else if (playsPowerUp(page)) attrs += " data-flow-sound";
-    const steps = Object.entries(page.steps || {}).map(([n, c]) => [n, { ...c, ...(c.sound ? { sound: url(c.sound) } : {}) }]);
+    // Sounds carry their file names too (a preview's sounds are blob: URLs, which have none).
+    const named = (src) => ({ sound: url(src), name: src.slice("sounds/".length) });
+    const steps = Object.entries(page.steps || {}).map(([n, c]) => [n, { ...c, ...(c.sound ? named(c.sound) : {}) }]);
     if (steps.length) attrs += ` data-flow-steps="${esc(JSON.stringify(Object.fromEntries(steps)))}"`;
-    const layers = (page.layers || []).map((l) => ({ ...l, sound: url(l.sound) }));
+    const layers = (page.layers || []).map((l) => ({ ...l, ...named(l.sound) }));
     if (layers.length) attrs += ` data-flow-layers="${esc(JSON.stringify(layers))}"`;
     return attrs;
   }
