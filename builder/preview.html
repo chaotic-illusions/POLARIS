@@ -1,0 +1,211 @@
+<!doctype html>
+<!--
+  POLARIS Preview: the page in a frame, with play, pause, stop and a scrubber
+  under it. Never published. The page gets builder/preview-clock.js, which puts
+  it on the clock these controls drive; the page to show is in the address's
+  #fragment (a blob: URL in a browser, ../name.html in the app).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PREVIEW</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&display=swap">
+  <link rel="stylesheet" href="../lcars/palette.css">
+  <style>
+    :root { color-scheme: dark; --bar: #000; --ink: #000; --dim: #777; }
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    body { display: grid; grid-template-rows: minmax(0, 1fr) auto; font-family: "Helvetica Ultra Compressed", "Antonio", "Arial Narrow", sans-serif; text-transform: uppercase; color: var(--lcars-tanoi, #FFCC99); }
+    iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    .transport { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--bar); border-top: 2px solid var(--lcars-atomic-tangerine, #FF9900); flex-wrap: wrap; }
+    button { font: inherit; font-size: 17px; letter-spacing: 0.04em; text-transform: uppercase; border: 0; border-radius: 999px; padding: 0.3em 1em; min-height: 30px; color: var(--ink); background: var(--lcars-melrose, #9999FF); cursor: pointer; }
+    button:hover { filter: brightness(1.15); }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    button.go { background: var(--lcars-atomic-tangerine, #FF9900); min-width: 6.2em; }
+    button.stop { background: var(--lcars-chestnut-rose, #CC6666); }
+    button.small { background: var(--lcars-lilac, #CC99CC); padding: 0.3em 0.75em; }
+    button[aria-pressed="true"] { background: var(--lcars-golden-tanoi, #FFCC66); }
+    button[aria-pressed="false"].toggle { background: #333; color: var(--lcars-tanoi, #FFCC99); }
+    .speed button[aria-pressed="false"] { background: #333; color: var(--lcars-tanoi, #FFCC99); }
+    .group { display: flex; gap: 4px; }
+    .scrub { flex: 1 1 260px; display: flex; align-items: center; gap: 10px; min-width: 200px; }
+    input[type="range"] { flex: 1; accent-color: var(--lcars-atomic-tangerine, #FF9900); }
+    .time { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 12.5em; text-align: right; color: var(--lcars-golden-tanoi, #FFCC66); }
+    .time small { color: var(--dim); font-size: 15px; }
+    .busy .time::after { content: " · LOADING"; color: var(--dim); }
+  </style>
+</head>
+<body>
+  <iframe id="page" title="PAGE PREVIEW"></iframe>
+  <div class="transport" role="toolbar" aria-label="PLAYBACK">
+    <div class="group">
+      <button type="button" class="small" id="restart" title="PLAY FROM THE START (HOME)">⏮ RESTART</button>
+      <button type="button" class="go" id="play" title="PLAY OR PAUSE (SPACE)">❚❚ PAUSE</button>
+      <button type="button" class="stop" id="stop" title="BACK TO THE START, PAUSED">■ STOP</button>
+    </div>
+    <div class="group">
+      <button type="button" class="small" id="back" title="ONE FRAME BACK (←; SHIFT: 250 MS)">◀ FRAME</button>
+      <button type="button" class="small" id="fwd" title="ONE FRAME ON (→; SHIFT: 250 MS)">FRAME ▶</button>
+    </div>
+    <div class="scrub">
+      <input type="range" id="scrub" min="0" max="5000" step="1" value="0" aria-label="POSITION IN THE OPENING, IN MILLISECONDS">
+      <span class="time" id="time">0 MS <small>/ 0 MS</small></span>
+    </div>
+    <div class="group speed" role="group" aria-label="SPEED">
+      <button type="button" data-rate="0.25" aria-pressed="false" title="QUARTER SPEED (SILENT)">¼×</button>
+      <button type="button" data-rate="0.5" aria-pressed="false" title="HALF SPEED (SILENT)">½×</button>
+      <button type="button" data-rate="1" aria-pressed="true" title="FULL SPEED, WITH SOUND">1×</button>
+    </div>
+    <div class="group">
+      <button type="button" class="toggle" id="loop" aria-pressed="false" title="PLAY THE OPENING OVER AND OVER (L)">⟳ LOOP</button>
+      <button type="button" class="small" id="shuffle" title="ANOTHER TAKE OF THE RANDOM PARTS (KEY PRESSES, GAUGES ...)">SHUFFLE</button>
+    </div>
+  </div>
+  <script>
+    "use strict";
+    const $ = (s) => document.querySelector(s);
+    const frame = $("#page"), scrub = $("#scrub"), time = $("#time"), playBtn = $("#play"), loopBtn = $("#loop");
+    const FRAME_MS = 1000 / 30; // one frame of 30 a second
+    const TAIL = 500; // the scrubber runs a little past the opening's end, to see it settle
+
+    const state = {
+      seed: (Math.random() * 2 ** 32) >>> 0,
+      request: null, // what the next load of the page should do: { t, play, rate }
+      clock: null,
+      rate: 1,
+      loop: false,
+      dragging: false,
+      seeking: false,
+    };
+
+    // The page's clock finds the preview here (builder/preview-clock.js).
+    window.PolarisPreview = {
+      get seed() { return state.seed; },
+      takeRequest() { const r = state.request; state.request = null; return r; },
+      attach(clock) { state.clock = clock; state.seeking = false; },
+      key: (key, shift) => onKey(key, shift),
+    };
+
+    // The page: the #fragment, relative to this file (or a blob: URL).
+    const target = decodeURIComponent(location.hash.slice(1));
+    if (target) frame.src = new URL(target, location.href).href;
+    frame.addEventListener("load", () => {
+      try {
+        const title = frame.contentDocument?.title;
+        if (title) document.title = `PREVIEW · ${title}`;
+      } catch { /* another origin */ }
+    });
+
+    /** Load the page again and go to t (ms from the opening's start), playing or paused. */
+    function seek(t, play, rate = state.rate) {
+      state.rate = rate;
+      state.request = { t: Math.max(0, Math.round(t)), play, rate };
+      state.clock = null;
+      state.seeking = true;
+      try { frame.contentWindow.location.reload(); } catch { frame.src = frame.src; }
+      paintSpeed();
+    }
+    const now = () => state.clock?.state() ?? null;
+    const position = () => now()?.t ?? state.request?.t ?? 0;
+
+    function togglePlay() {
+      const s = now();
+      if (!s || s.t == null) return;
+      s.playing ? state.clock.pause() : state.clock.play();
+    }
+    function stepBy(ms) {
+      const s = now();
+      if (!s || s.t == null) return;
+      if (ms > 0) state.clock.step(ms);
+      else seek(Math.max(0, s.t + ms), false);
+    }
+    function onKey(key, shift) {
+      const by = shift ? 250 : FRAME_MS;
+      if (key === " ") togglePlay();
+      else if (key === "Home") seek(0, true);
+      else if (key === "ArrowLeft") stepBy(-by);
+      else if (key === "ArrowRight") stepBy(by);
+      else if (key === "l" || key === "L") setLoop(!state.loop);
+    }
+    addEventListener("keydown", (e) => {
+      if (e.target.closest?.("input, select, textarea")) return;
+      if (!/^( |Home|ArrowLeft|ArrowRight|l|L)$/.test(e.key)) return;
+      if (e.key === " " && e.target.closest?.("button")) return; // a focused button takes its own Space
+      e.preventDefault();
+      onKey(e.key, e.shiftKey);
+    });
+
+    $("#restart").addEventListener("click", () => seek(0, true));
+    playBtn.addEventListener("click", togglePlay);
+    $("#stop").addEventListener("click", () => seek(0, false));
+    $("#back").addEventListener("click", (e) => stepBy(e.shiftKey ? -250 : -FRAME_MS));
+    $("#fwd").addEventListener("click", (e) => stepBy(e.shiftKey ? 250 : FRAME_MS));
+    $("#shuffle").addEventListener("click", () => {
+      state.seed = (Math.random() * 2 ** 32) >>> 0;
+      const s = now();
+      seek(position(), s ? s.playing : true);
+    });
+    function setLoop(on) {
+      state.loop = on;
+      loopBtn.setAttribute("aria-pressed", String(on));
+    }
+    loopBtn.addEventListener("click", () => setLoop(!state.loop));
+    for (const b of document.querySelectorAll(".speed button")) {
+      b.addEventListener("click", () => {
+        const s = now();
+        seek(position(), s ? s.playing : true, Number(b.dataset.rate));
+      });
+    }
+    function paintSpeed() {
+      for (const b of document.querySelectorAll(".speed button")) b.setAttribute("aria-pressed", String(Number(b.dataset.rate) === state.rate));
+    }
+
+    // Scrubbing: the page follows (a load at a time), paused where you let go.
+    let pending = null;
+    const follow = () => {
+      if (state.seeking || now()?.busy) return;
+      if (pending == null) return;
+      const t = pending;
+      pending = null;
+      seek(t, false);
+    };
+    scrub.addEventListener("pointerdown", () => { state.dragging = true; });
+    scrub.addEventListener("input", () => {
+      pending = Number(scrub.value);
+      paintTime(pending);
+      follow();
+    });
+    scrub.addEventListener("change", () => {
+      state.dragging = false;
+      pending = Number(scrub.value);
+      state.seeking = false; // the last place wins
+      follow();
+    });
+
+    function paintTime(t, s = now()) {
+      const end = Math.max(1000, Math.round((s?.end || 0)));
+      time.innerHTML = `${Math.round(t)} MS <small>/ ${end} MS</small>`;
+    }
+
+    // Keep the controls in step with the page.
+    function tick() {
+      const s = now();
+      document.body.classList.toggle("busy", state.seeking || !!s?.busy);
+      if (s && s.t != null) {
+        const max = Math.max(1000, Math.round(s.end)) + TAIL;
+        if (Number(scrub.max) !== max) scrub.max = String(max);
+        if (!state.dragging) {
+          scrub.value = String(Math.min(max, Math.round(s.t)));
+          paintTime(s.t, s);
+        }
+        playBtn.textContent = s.playing ? "❚❚ PAUSE" : "▶ PLAY";
+        if (state.loop && s.playing && s.t > Math.max(1000, s.end) + TAIL) seek(0, true);
+      }
+      if (!state.seeking) follow();
+      requestAnimationFrame(tick);
+    }
+    paintSpeed();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

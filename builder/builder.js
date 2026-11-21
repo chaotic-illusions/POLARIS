@@ -2837,7 +2837,7 @@
   const pieceAttrs = (p) => (p.openStep ? ` data-step="${p.openStep}"` : "") + (p.group ? ` data-group="${esc(p.group)}"` : "") +
     (p.opens ? ` data-opens="${esc(p.opens)}" role="button" tabindex="0" aria-expanded="false"` : "");
 
-  function pageHTML({ preview = false, shapes = null, page = doc } = {}) {
+  function pageHTML({ preview = false, shapes = null, page = doc, clock = "" } = {}) {
     const lib = (path) => (preview ? libURL(path) : path);
     const pieces = page.pieces.map((p) => {
       const isLink = p.type === "button" && !p.opens && safeHref(p.href);
@@ -2852,7 +2852,8 @@
     return `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8">${clock ? `
+  <script src="${esc(clock)}"></script>` : ""}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(page.title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2884,9 +2885,10 @@ ${pieces}
     addEventListener("click", (e) => {
       const a = e.target.closest?.("a[href]");
       const m = a && a.getAttribute("href").match(/^([\\w-]+)\\.html$/);
-      if (!m || !window.opener?.lcarsBuilder?.previewPage) return;
+      const builder = (window.opener || (parent !== window && parent.opener))?.lcarsBuilder; // the page sits in Preview's frame
+      if (!m || !builder?.previewPage) return;
       e.preventDefault();
-      window.opener.lcarsBuilder.previewPage(m[1], window);
+      builder.previewPage(m[1], window);
     }, true);
   </script>`;
 
@@ -2964,11 +2966,11 @@ ${pieces}
   }
 
   /** Every file of the exported site: pages, their stylesheets, the shared files, pictures and site.json. */
-  async function siteFiles() {
+  async function siteFiles({ clock = "" } = {}) {
     const files = {};
     for (const page of site.pages) {
       const shapes = await textShapes({ page });
-      files[`${page.file}.html`] = pageHTML({ shapes, page });
+      files[`${page.file}.html`] = pageHTML({ shapes, page, clock });
       files[`${page.file}.css`] = pageCSS(page) + (shapes?.css ?? "");
     }
     files["site.json"] = JSON.stringify(site, null, 2);
@@ -3052,13 +3054,23 @@ ${pieces}
     toast(`Published ${Object.keys(files).length} files to "${dir.name}"`);
   }
 
+  /*
+   * Preview shows the page in builder/preview.html, with play, pause, stop and a
+   * scrubber; each page gets builder/preview-clock.js first, which puts it on
+   * the clock those drive. Neither is ever published. In the app the preview's
+   * files sit beside the site's, under __preview/.
+   */
+  const PREVIEW_DIR = "__preview";
   async function preview() {
     if (editing) finishEdit(true);
     if (APP) {
-      const files = await siteFiles();
+      const files = await siteFiles({ clock: `${PREVIEW_DIR}/clock.js` });
       if (!files) return;
       try {
-        await appCall("preview", { files: await encodeFiles(files), start: `${doc.file}.html`, title: doc.title || doc.file });
+        files[`${PREVIEW_DIR}/clock.js`] = await (await fetch("preview-clock.js")).text();
+        files[`${PREVIEW_DIR}/index.html`] = await (await fetch("preview.html")).text();
+        const start = `${PREVIEW_DIR}/index.html#${encodeURIComponent(`../${doc.file}.html`)}`;
+        await appCall("preview", { files: await encodeFiles(files), start, title: doc.title || doc.file });
       } catch (err) {
         toast(`Could not preview: ${err}`);
       }
@@ -3066,14 +3078,15 @@ ${pieces}
     }
     // Open the tab now, while the click still counts, and fill it once the text is outlined.
     const win = window.open("", "_blank");
-    const url = await previewURL(doc);
+    const url = new URL(`preview.html#${encodeURIComponent(await previewURL(doc))}`, location.href).href;
     if (win) win.location.href = url;
     else window.open(url, "_blank");
   }
 
   async function previewURL(page) {
     const shapes = await textShapes({ forPreview: true, page });
-    return URL.createObjectURL(new Blob([pageHTML({ preview: true, shapes, page })], { type: "text/html" }));
+    const clock = new URL("preview-clock.js", location.href).href;
+    return URL.createObjectURL(new Blob([pageHTML({ preview: true, shapes, page, clock })], { type: "text/html" }));
   }
 
   /** A preview's link to another page of the site: show that page's preview in the same tab. */

@@ -583,14 +583,21 @@
 
   let running = null;
 
+  /**
+   * The opening starts now, before any of its sounds: "lcars-flow:start" on the
+   * page (the POLARIS preview's clock keeps time from it). Sent even when the
+   * page just shows (reduced motion), so listeners always hear it.
+   */
+  const announce = (root) => root.dispatchEvent(new CustomEvent("lcars-flow:start", { bubbles: true }));
+
   /** Build a page on. */
   function play(root = document.querySelector("[data-flow]") || document.body, opts = {}) {
     stop();
     document.documentElement.classList.remove("flow-pending");
     closeGroups(root);
-    if (reduced()) return;
+    if (reduced()) return announce(root);
     const p = plan(root, opts);
-    if (!p) return;
+    if (!p) return announce(root);
     const { page } = p;
 
     // Hide it all, words too, until the colour and then the content arrive.
@@ -614,13 +621,17 @@
     const stepSounds = Object.values(p.steps).map((c) => c.sound).filter(Boolean);
     const layers = layerConfig(root, opts);
     if (sound) p.timed = true; // the opening takes as long as the sound, whether or not the browser lets it play
-    if (!sound && !stepSounds.length && !layers.length) return go(p, run);
+    if (!sound && !stepSounds.length && !layers.length) {
+      announce(root);
+      return go(p, run);
+    }
     Promise.all([
       !sound ? false : own ? sounds.ready(800, own) : sounds.ready(800),
       ...stepSounds.map((url) => sounds.ready(800, url)),
       ...layers.map((l) => sounds.ready(800, l.sound)),
     ]).then(() => {
       if (running !== run) return;
+      announce(root);
       // Every sound decides now, alike: it plays if it has loaded and sound may play. (A sound's own
       // check can come before a new window's audio has started, which dropped the power-up alone.)
       const ok = sounds.ctx?.state === "running";
@@ -709,6 +720,15 @@
       if (Number.isFinite(next)) return next - t;
       return p.timed ? Math.max(phase, soundEnd - t) : 900;
     };
+    // Where everything falls, in ms from the start ("lcars-flow:timeline" on the page, for the POLARIS preview).
+    const last = nums.length ? whens.at(-1) : at;
+    page.root.dispatchEvent(new CustomEvent("lcars-flow:timeline", {
+      bubbles: true,
+      detail: {
+        frame: Math.round(real(endAll)), content: at, end: Math.round(Math.max(p.timed ? soundEnd : 0, last + budget(last))),
+        steps: nums.map((n, i) => ({ step: n, at: Math.round(whens[i]) })),
+      },
+    }));
     if (nums.length) run.timers.push(setTimeout(() => populate(page, run, budget(at), 0, budget(at)), at));
     else run.timers.push(setTimeout(() => populate(page, run, p.timed ? phase : 0), at));
     nums.forEach((n, i) => {
