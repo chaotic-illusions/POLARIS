@@ -853,6 +853,31 @@
   /** The CSS family a project font is known by, on the board and in published pages. */
   const fontFamily = (src) => `POLARIS ${src}`;
 
+  /**
+   * The opening's parts' timing, as lcars/flow.js reads it (data-flow-steps): keys
+   * "frame", "content" and the step numbers, each with a delay (ms after the part
+   * before it starts; the frame has none) and a length (ms), either left out for
+   * auto; a step's sound; and "at", a step's start in seconds from before delays.
+   */
+  function cleanTiming(steps) {
+    const out = {};
+    const ms = (v) => (v === "" || v == null ? -1 : Math.round(finite(v, -1)));
+    for (const [n, c] of Object.entries(steps && typeof steps === "object" ? steps : {})) {
+      if (!/^(\d+|frame|content)$/.test(n) || !c || typeof c !== "object") continue;
+      const step = /^\d+$/.test(n);
+      const at = step && c.at !== "" && c.at != null ? finite(c.at, -1) : -1;
+      const delay = n === "frame" ? -1 : ms(c.delay), length = ms(c.length);
+      const part = {
+        ...(at >= 0 ? { at } : {}),
+        ...(delay >= 0 ? { delay } : {}),
+        ...(length >= 0 ? { length } : {}),
+        ...(step && isSoundSrc(c.sound) ? { sound: c.sound } : {}),
+      };
+      if (Object.keys(part).length) out[n] = part;
+    }
+    return out;
+  }
+
   function cleanPage(doc) {
     const blank = blankDoc();
     for (const key of ["cols", "rows", "cell"]) {
@@ -863,16 +888,9 @@
     doc.file = String(doc.file ?? "");
     doc.flow = /^[a-z]+$/.test(doc.flow) ? doc.flow : "none";
     doc.sound = !!doc.sound;
-    // The opening's own sound (blank: the built-in power-up), and each step's start time and sound.
+    // The opening's own sound (blank: the built-in power-up), and its parts' timing (cleanTiming).
     doc.soundFile = isSoundSrc(doc.soundFile) ? doc.soundFile : "";
-    const steps = {};
-    for (const [n, c] of Object.entries(doc.steps && typeof doc.steps === "object" ? doc.steps : {})) {
-      if (!/^\d+$/.test(n) || !c || typeof c !== "object") continue;
-      const at = c.at === "" || c.at == null ? -1 : finite(c.at, -1);
-      const step = { ...(at >= 0 ? { at } : {}), ...(isSoundSrc(c.sound) ? { sound: c.sound } : {}) };
-      if (Object.keys(step).length) steps[n] = step;
-    }
-    doc.steps = steps;
+    doc.steps = cleanTiming(doc.steps);
     // Sounds layered on top of the opening's: each a file and when it starts (seconds from the beginning).
     doc.layers = (Array.isArray(doc.layers) ? doc.layers : [])
       .filter((l) => l && typeof l === "object" && isSoundSrc(l.sound))
@@ -2172,14 +2190,28 @@
   const toMs = (s) => Math.round(s * 1000);
   const fromMs = (ms) => Math.round(ms) / 1000;
 
+  /** Set (or, with null, clear) one of a part's timing values in page.steps, dropping the part when nothing's left. */
+  function setTiming(page, key, name, value) {
+    page.steps ||= {};
+    const part = { ...(page.steps[key] || {}) };
+    if (value == null) delete part[name];
+    else part[name] = value;
+    if (name === "delay" && value != null) delete part.at; // a delay of its own replaces a start time from before delays
+    if (Object.keys(part).length) page.steps[key] = part;
+    else delete page.steps[key];
+  }
+
   /**
-   * The page's opening animation: its style, and its steps, each with an
-   * optional start time and sound. The opening's sounds have their own
-   * section (soundSettings).
+   * The page's opening animation: its style, then its parts (the frame, the
+   * content and each step), each with a delay and a length in ms, blank for
+   * auto, and a step's sound. The opening's sounds have their own section
+   * (soundSettings).
    */
   function openingSettings() {
     const out = [field(doc, "flow", "Opening (how the page appears)", ["console", "spread", "none"], { page: true })];
+    if (!doc.flow || doc.flow === "none") return out;
     const rebuild = () => { commit(); renderInspector(); };
+    doc.steps ||= {};
 
     // The steps on this page, from their pieces.
     const counts = new Map();
@@ -2187,50 +2219,119 @@
     const nums = [...counts.keys()].sort((a, b) => a - b);
     const note = document.createElement("p");
     note.className = "note";
-    note.textContent = nums.length
-      ? "After the frame and the rest of the content, each step comes in, in order. With sound they share the time until it ends; " +
-        "a start time (milliseconds from the beginning) sets a step's own."
-      : "To bring pieces in later, give them an Opening step in their panel (select several to set them together).";
+    note.textContent = "The frame draws, then the content comes in" + (nums.length ? ", then each step, in order" : "") + ". " +
+      "A delay is how long after the part before it starts (the content's, after the frame starts); a length, how long it takes; " +
+      "blank is auto. Or drag them on Preview's tracks: move a part for its delay, its end for its length, double-click it for auto." +
+      (nums.length ? "" : " To bring pieces in later, give them an Opening step in their panel (select several to set them together).");
     out.push(note);
-    doc.steps ||= {};
+
+    /** A delay or length box (ms; blank: auto). */
+    const msInput = (key, name, label) => {
+      const wrap = document.createElement("label");
+      wrap.className = "field";
+      const cap = document.createElement("span");
+      cap.textContent = label;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "10";
+      input.placeholder = "auto";
+      input.value = doc.steps[key]?.[name] ?? "";
+      input.addEventListener("change", () => {
+        const v = Number(input.value);
+        setTiming(doc, key, name, input.value === "" || !(v >= 0) ? null : Math.round(v));
+        rebuild();
+      });
+      wrap.append(cap, input);
+      return wrap;
+    };
+    const box = (title, key, withDelay) => {
+      const el = document.createElement("div");
+      el.className = "step-box";
+      const head = document.createElement("h3");
+      head.textContent = title;
+      const row = document.createElement("div");
+      row.className = "timing-row";
+      if (withDelay) row.append(msInput(key, "delay", "Delay (ms)"));
+      row.append(msInput(key, "length", "Length (ms)"));
+      el.append(head, row);
+      return el;
+    };
+
+    out.push(box("Frame", "frame", false), box("Content", "content", true));
     for (const n of nums) {
       const conf = doc.steps[n] || {};
-      const box = document.createElement("div");
-      box.className = "step-box";
-      const head = document.createElement("h3");
-      head.textContent = `Step ${n} · ${counts.get(n)} piece${counts.get(n) > 1 ? "s" : ""}`;
-      const at = document.createElement("label");
-      at.className = "field";
-      const atCap = document.createElement("span");
-      atCap.textContent = "Starts at (ms; blank: shared out)";
-      const atInput = document.createElement("input");
-      atInput.type = "number";
-      atInput.min = "0";
-      atInput.step = "50";
-      atInput.placeholder = "auto";
-      atInput.value = conf.at == null ? "" : toMs(conf.at);
-      atInput.addEventListener("change", () => {
-        const v = Number(atInput.value);
-        const step = { ...(doc.steps[n] || {}) };
-        if (atInput.value === "" || !(v >= 0)) delete step.at;
-        else step.at = fromMs(v);
-        if (Object.keys(step).length) doc.steps[n] = step;
-        else delete doc.steps[n];
-        commit();
-      });
-      at.append(atCap, atInput);
-      box.append(head, at, soundPicker(conf.sound || "", (src) => {
-        const step = { ...(doc.steps[n] || {}) };
-        if (src) step.sound = src;
-        else delete step.sound;
-        if (Object.keys(step).length) doc.steps[n] = step;
-        else delete doc.steps[n];
+      const el = box(`Step ${n} · ${counts.get(n)} piece${counts.get(n) > 1 ? "s" : ""}`, String(n), true);
+      // A start time from before delays: shown while the step has one, so it can be cleared.
+      if (conf.at != null && conf.delay == null) {
+        const old = document.createElement("p");
+        old.className = "note";
+        old.textContent = `Starts at ${toMs(conf.at)} ms from the beginning (set before delays). A delay replaces it. `;
+        old.append(actionButton("Clear", "rose", () => { setTiming(doc, String(n), "at", null); rebuild(); }));
+        el.append(old);
+      }
+      el.append(soundPicker(conf.sound || "", (src) => {
+        setTiming(doc, String(n), "sound", src || null);
         rebuild();
       }, "Sound as it comes in"));
-      out.push(box);
+      out.push(el);
+    }
+    const timed = Object.values(doc.steps).some((c) => c.delay != null || c.length != null || c.at != null);
+    if (timed) {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.append(actionButton("All auto", "blue", () => {
+        for (const key of Object.keys(doc.steps)) for (const name of ["delay", "length", "at"]) setTiming(doc, key, name, null);
+        rebuild();
+        toast("The opening's timing is all auto again");
+      }));
+      out.push(actions);
     }
     return out;
   }
+
+  /**
+   * Timing dragged on Preview's tracks, for one page: { page, steps: { key: { delay, length } },
+   * layers: [at in seconds] }, null for auto. Checked here, as it comes from another window.
+   */
+  function previewTiming(timing) {
+    if (!timing || typeof timing !== "object") return;
+    const page = site.pages.find((p) => p.file === timing.page);
+    if (!page) return;
+    const ms = (v) => (v == null ? null : Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : undefined);
+    let changed = false;
+    for (const [key, c] of Object.entries(timing.steps && typeof timing.steps === "object" ? timing.steps : {})) {
+      if (!/^(\d+|frame|content)$/.test(key) || !c || typeof c !== "object") continue;
+      for (const name of key === "frame" ? ["length"] : ["delay", "length"]) {
+        if (!(name in c)) continue;
+        const v = ms(c[name]);
+        if (v === undefined || (page.steps?.[key]?.[name] ?? null) === v) continue;
+        setTiming(page, key, name, v);
+        changed = true;
+      }
+      // Back to auto clears a start time from before delays too.
+      if (/^\d+$/.test(key) && c.delay === null && "at" in c && c.at === null && page.steps?.[key]?.at != null) {
+        setTiming(page, key, "at", null);
+        changed = true;
+      }
+    }
+    if (Array.isArray(timing.layers) && Array.isArray(page.layers) && timing.layers.length === page.layers.length) {
+      timing.layers.forEach((at, i) => {
+        const v = Number(at);
+        if (Number.isFinite(v) && v >= 0 && page.layers[i].at !== fromMs(toMs(v))) {
+          page.layers[i].at = fromMs(toMs(v));
+          changed = true;
+        }
+      });
+    }
+    if (!changed) return;
+    page.steps = cleanTiming(page.steps);
+    commit();
+    if (page === doc) renderInspector();
+    toast(page === doc ? "Timing from Preview saved (Ctrl+Z undoes it)" : `Timing from Preview saved to ${page.title || page.file}`);
+  }
+  // In the app, the preview window's timing arrives as an event for this window (desktop: preview_timing).
+  APP?.event?.listen("preview-timing", (e) => { if (e.payload?.to === WIN) previewTiming(e.payload.timing); }).catch(() => {});
 
   /**
    * The opening's sounds, one line each: name, start time (milliseconds), Remove.
@@ -3353,6 +3454,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">${clock ? `
+  <meta name="polaris-page" content="${esc(page.file)}">
   <script src="${esc(clock)}"></script>` : ""}
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(page.title)}</title>
@@ -4872,6 +4974,7 @@ ${pieces}
 
   window.lcarsBuilder = {
     get doc() { return doc; }, get site() { return site; }, get unsaved() { return unsaved(); }, pageHTML, pageCSS, siteFiles, load, loadSite, select, flip, switchPage, previewPage,
+    previewTiming,
     startEdit: (id) => startEdit(piece(id)),
     colorText, parseLabel, serialize,
   };

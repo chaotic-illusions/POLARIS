@@ -20,6 +20,10 @@
  * opening's start ("lcars-flow:start" from lcars/flow.js), or from load on a
  * page without an opening. The preview window talks to it through
  * parent.PolarisPreview (seed, takeRequest(), attach(clock), key()).
+ *
+ * Timing dragged on the preview's tracks comes back as retime(): the page's
+ * data-flow-steps and data-flow-layers change and the opening is built again
+ * at once, at the same moment, playing or not: no reload.
  */
 (() => {
   "use strict";
@@ -48,9 +52,11 @@
   };
 
   let zero = null;         // page time the opening started
+  let again = null;        // after retime(): where to be once the opening starts again ({ t, play, rate })
+  let moving = null;       // where the opening is being moved to, once it's built ({ t, play })
   let opening = null;      // from lcars/flow.js: { render(t), sound: { play(from), stop() }, timeline }
   const t = () => (zero == null ? null : Math.max(0, now() - zero));
-  const audible = () => live && rate === 1;
+  const audible = () => live && rate === 1 && !moving; // silent while an opening is built to be moved
 
   /* ---- seeded randomness ---- */
 
@@ -237,14 +243,22 @@
   function started() {
     zero = now();
     reseed();
-    const ask = host.takeRequest?.();
+    const ask = again ?? host.takeRequest?.();
+    again = null;
     if (!ask) return;
     rate = ask.rate > 0 ? ask.rate : 1;
-    hold(false); // held from here, so the opening's sound doesn't start
-    realSetTimeout(() => {
-      seek(ask.t || 0);
-      if (ask.play) play();
-    }, 0);
+    // The opening is built as it is when a page loads, with the clock running (silently), and moved
+    // there two frames on. Built with the clock held, some pieces kept their first look (hidden, or
+    // mid-flare) wherever they were moved to.
+    moving = { t: ask.t || 0, play: !!ask.play };
+    hold(true);
+    realRAF(() => realRAF(() => {
+      const to = moving;
+      moving = null;
+      hold(false);
+      seek(to.t);
+      if (to.play) play();
+    }));
   }
   document.addEventListener("lcars-flow:start", started, true);
   // A page without an opening keeps time from when it loads.
@@ -267,9 +281,43 @@
     host.key?.(e.key, e.shiftKey);
   });
 
+  const root = () => document.querySelector("[data-flow]");
+  const json = (text, fallback) => { try { return JSON.parse(text || "") ?? fallback; } catch { return fallback; } };
+
+  /** The opening's timing as the page has it: data-flow-steps and data-flow-layers. */
+  function config() {
+    const r = root();
+    if (!r) return null;
+    const steps = json(r.dataset.flowSteps, {}), layers = json(r.dataset.flowLayers, []);
+    return { steps: steps && typeof steps === "object" && !Array.isArray(steps) ? steps : {}, layers: Array.isArray(layers) ? layers : [] };
+  }
+
+  /**
+   * New timing: the opening is built again with it, from where it is now (playing on if it was).
+   * Page time goes back to the opening's start to build it, as it was built when the page loaded,
+   * so it starts at the same page time and the page's own effects (blinks, cascades) stay in step.
+   * Its sound is let start first, held silent, so the opening plans it as it did then.
+   */
+  async function retime({ steps, layers }) {
+    const r = root();
+    if (!r || !window.LcarsFlow || zero == null) return;
+    const playing = live;
+    again = { t: t() ?? 0, play: playing, rate };
+    if (audible()) opening?.sound.stop();
+    hold(false);
+    vt = zero;
+    r.dataset.flowSteps = JSON.stringify(steps || {});
+    r.dataset.flowLayers = JSON.stringify(layers || []);
+    await resumeAll();
+    window.LcarsFlow.play(r); // the old opening stays shown on the tracks until the new one hands itself over
+  }
+
+  /** Which page of the site this is (from the builder), for saving timing to it. */
+  const page = () => document.querySelector('meta[name="polaris-page"]')?.content ?? "";
+
   host.attach({
     /** Where the opening is: t in ms from its start (null before it starts), and its timeline from lcars/flow.js. */
-    state: () => ({ t: t(), playing: live, rate, end: opening?.timeline.end ?? 0, timeline: opening?.timeline ?? null }),
-    play, pause, seek, step, setRate,
+    state: () => ({ t: (moving ?? again)?.t ?? t(), playing: (moving ?? again)?.play ?? live, rate, end: opening?.timeline.end ?? 0, timeline: opening?.timeline ?? null, page: page() }),
+    play, pause, seek, step, setRate, config, retime,
   });
 })();

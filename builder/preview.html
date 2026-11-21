@@ -5,6 +5,11 @@
   steps) and its sounds, on one time scale. Never published. The page gets builder/preview-clock.js, which puts
   it on the clock these controls drive; the page to show is in the address's
   #fragment (a blob: URL in a browser, ../name.html in the app).
+  Dragging a part on the tracks sets its delay, its end its length, and a
+  layered sound's start; double-clicking a part puts it back to auto. The page
+  is built again with the new timing at once (no reload), and the builder that
+  opened the preview saves it to the project, with undo: through its opener
+  (lcarsBuilder.previewTiming) in a browser, the preview_timing command in the app.
 -->
 <html lang="en">
 <head>
@@ -62,6 +67,14 @@
     .lanes-wrap { grid-column: 2; position: relative; }
     .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; pointer-events: none; z-index: 2; box-shadow: 0 0 6px rgb(255 255 255 / 0.6); }
     .empty { grid-column: 1 / -1; color: var(--dim); font-size: 15px; padding: 6px 0; }
+    /* Parts and layered sounds that can be dragged: the body to move, the end to change the length. */
+    .block.movable { cursor: grab; }
+    .block.dragging { cursor: grabbing; z-index: 1; filter: brightness(1.2); }
+    .block.own { box-shadow: inset 0 0 0 2px #fff; }
+    .grip { position: absolute; top: 0; bottom: 0; right: 0; width: 9px; cursor: ew-resize; background: rgb(0 0 0 / 0.25); border-left: 1px solid rgb(0 0 0 / 0.5); }
+    .readout { position: absolute; top: -2px; z-index: 4; transform: translateY(-100%); padding: 1px 6px; border-radius: 6px; background: #fff; color: #000; font-size: 13px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+    .saved { grid-column: 1 / -1; font-size: 13px; color: var(--dim); letter-spacing: 0.04em; padding: 0 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .saved.bad { color: var(--lcars-chestnut-rose, #CC6666); }
   </style>
 </head>
 <body>
@@ -92,6 +105,7 @@
     </div>
   </div>
   <div class="tracks" id="tracks" aria-label="TRACKS">
+    <div class="saved" id="saved" role="status">DRAG A PART TO MOVE IT (ITS DELAY) · ITS END FOR ITS LENGTH · DOUBLE-CLICK IT FOR AUTO · A LAYERED SOUND TO MOVE IT</div>
     <div class="head views" role="group" aria-label="WHICH TRACKS">
       <button type="button" data-view="video" aria-pressed="false" title="THE OPENING&#39;S PARTS">VIDEO</button>
       <button type="button" data-view="audio" aria-pressed="false" title="THE OPENING&#39;S SOUNDS">AUDIO</button>
@@ -320,9 +334,14 @@
         const block = el("div", `block ${kind}`);
         block.style.left = pct(item.start, span);
         block.style.width = pct(Math.max(item.length, 1), span);
-        block.title = `${item.label}: ${item.start} → ${item.start + item.length} MS (${item.length} MS)`;
+        block.dataset.id = item.id;
+        const how = editable(item);
+        block.title = `${item.label}: ${item.start} → ${item.start + item.length} MS (${item.length} MS)` + (how ? ` · ${how.own ? "SET" : "AUTO"}` : "");
         if (kind === "sound" && item.peaks?.length) block.append(wave(item.peaks));
         else block.append(el("span", "", `${item.length} MS`));
+        if (how?.move) block.classList.add("movable");
+        if (how?.own) block.classList.add("own");
+        if (how?.length) block.append(el("i", "grip"));
         lane.append(block);
         lanes.append(lane);
       }
@@ -347,6 +366,157 @@
       }
     }
 
+    /*
+     * Timing: what can be dragged. A part's key in data-flow-steps ("frame", "content",
+     * a step's number) or a layered sound's place in data-flow-layers; whether it has
+     * timing of its own (else it's auto); and what dragging it changes.
+     */
+    function editable(item) {
+      const cfg = state.clock?.config?.();
+      if (!cfg) return null;
+      if (item.id === "frame") return { key: "frame", own: cfg.steps.frame?.length != null, move: false, length: true };
+      const step = item.id === "content" ? "content" : item.id.match(/^step-(\d+)$/)?.[1];
+      if (step) {
+        const c = cfg.steps[step] || {};
+        return { key: step, own: c.delay != null || c.length != null || c.at != null, move: true, length: true };
+      }
+      const layer = item.id.match(/^layer-(\d+)$/);
+      if (layer && cfg.layers[layer[1] - 1]) return { layer: layer[1] - 1, own: true, move: true, length: false };
+      return null;
+    }
+
+    const savedEl = $("#saved");
+    function said(text, bad = false) {
+      savedEl.textContent = text;
+      savedEl.classList.toggle("bad", bad);
+    }
+
+    /** Send the page's timing to the builder that opened the preview, to save in the project. */
+    function tellBuilder(timing) {
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (invoke) {
+        invoke("preview_timing", { timing }).then(() => said("SAVED TO THE PROJECT · CTRL+Z IN THE BUILDER UNDOES IT"),
+          (err) => said(`NOT SAVED: ${String(err).toUpperCase()}`, true));
+        return;
+      }
+      let builder = null;
+      try { builder = window.opener?.lcarsBuilder; } catch { /* another origin */ }
+      if (!builder?.previewTiming) return said("NOT SAVED: THE BUILDER THAT OPENED THIS PREVIEW IS CLOSED", true);
+      builder.previewTiming(timing);
+      said("SAVED TO THE PROJECT · CTRL+Z IN THE BUILDER UNDOES IT");
+    }
+
+    /**
+     * Change one part's (or layered sound's) timing: the page is built again with it, from
+     * where it is, and the builder saves it. what: "move" (start, ms), "length" (ms) or "auto".
+     */
+    function retime(how, what, value, prevStart = 0) {
+      const s = ready(), cfg = state.clock?.config?.();
+      if (!s || !cfg) return;
+      const { steps, layers } = cfg;
+      if (how.layer != null) {
+        layers[how.layer].at = Math.max(0, Math.round(value - 50)) / 1000; // sounds start 50 ms in
+      } else {
+        const part = { ...(steps[how.key] || {}) };
+        if (what === "move") { part.delay = Math.max(0, Math.round(value - prevStart)); delete part.at; }
+        else if (what === "length") part.length = Math.max(1, Math.round(value));
+        else { delete part.delay; delete part.length; delete part.at; }
+        if (Object.keys(part).length) steps[how.key] = part;
+        else delete steps[how.key];
+      }
+      state.clock.retime({ steps, layers });
+      const timing = { page: s.page, steps: {}, layers: layers.map((l) => l.at) };
+      if (how.layer == null) {
+        const p = steps[how.key] || {};
+        timing.steps[how.key] = { delay: p.delay ?? null, length: p.length ?? null, at: p.at ?? null };
+      }
+      tellBuilder(timing);
+    }
+
+    // Dragging a part: its body moves it (its delay), its end changes its length. Edges snap to
+    // other parts' and the playhead (within 6 px; Alt: not), times to 10 ms (Shift: 1 ms).
+    let edit = null;
+    function beginEdit(e, block) {
+      const s = ready(), tl = shownTimeline;
+      if (!s || !tl) return false;
+      const id = block.dataset.id;
+      const list = id.startsWith("layer-") ? tl.sounds : tl.parts;
+      const idx = list.findIndex((p) => p.id === id);
+      const item = list[idx], how = item && editable(item);
+      const mode = e.target.closest(".grip") ? "length" : "move";
+      if (!how || (mode === "move" && !how.move) || (mode === "length" && !how.length)) return false;
+      const lane = block.parentElement;
+      // A step starts no earlier than the part before it (the content, no earlier than the frame).
+      const prevStart = how.layer != null ? 0 : idx > 0 ? tl.parts[idx - 1].start : 0;
+      const edges = [...tl.parts, ...tl.sounds].filter((p) => p !== item).flatMap((p) => [p.start, p.start + p.length]);
+      edit = { block, lane, item, how, mode, prevStart, edges, x0: e.clientX, width: lane.getBoundingClientRect().width,
+        span: shownSpan, value: mode === "move" ? item.start : item.length, moved: false, readout: null };
+      lane.setPointerCapture(e.pointerId);
+      return true;
+    }
+    function moveEdit(e) {
+      const d = edit, dx = e.clientX - d.x0;
+      if (!d.moved && Math.abs(dx) < 3) return;
+      if (!d.moved) {
+        d.moved = true;
+        d.block.classList.add("dragging");
+        d.readout = el("div", "readout");
+        d.lane.append(d.readout);
+      }
+      const perPx = d.span / d.width;
+      const grid = e.shiftKey ? 1 : 10;
+      const base = (d.mode === "move" ? d.item.start : d.item.length) + dx * perPx;
+      let v = Math.round(base / grid) * grid;
+      if (!e.altKey) {
+        const t = ready()?.t;
+        const marks = t != null ? [...d.edges, t] : d.edges;
+        // The edge being moved: the start (and, moving, the end too) against the others.
+        const ends = d.mode === "move" ? [[base, 0], [base + d.item.length, d.item.length]] : [[d.item.start + base, d.item.start]];
+        let best = 6 * perPx;
+        for (const [edge, off] of ends) for (const m of marks) {
+          if (Math.abs(m - edge) < best) { best = Math.abs(m - edge); v = Math.round(m - off); }
+        }
+      }
+      if (d.mode === "move") v = Math.max(d.how.layer != null ? 50 : d.prevStart, v);
+      else v = Math.max(10, v);
+      d.value = v;
+      const start = d.mode === "move" ? v : d.item.start, length = d.mode === "move" ? d.item.length : v;
+      d.block.style.left = pct(start, d.span);
+      d.block.style.width = pct(Math.max(length, 1), d.span);
+      d.readout.style.left = pct(start, d.span);
+      d.readout.textContent = d.mode === "length" ? `LENGTH ${v} MS`
+        : d.how.layer != null ? `STARTS AT ${v - 50} MS`
+          : d.item.id === "content" ? `DELAY ${v - d.prevStart} MS AFTER THE FRAME STARTS`
+            : `DELAY ${v - d.prevStart} MS · STARTS AT ${v} MS`;
+    }
+    function endEdit(e, cancel = false) {
+      const d = edit;
+      edit = null;
+      d.readout?.remove();
+      d.block.classList.remove("dragging");
+      if (!d.moved) { // a click: go there, as a click on a lane does
+        if (!cancel && ready()) state.clock.seek(timeAt(e, d.lane));
+        return;
+      }
+      if (cancel) {
+        d.block.style.left = pct(d.item.start, d.span);
+        d.block.style.width = pct(Math.max(d.item.length, 1), d.span);
+        return;
+      }
+      if (d.value !== (d.mode === "move" ? d.item.start : d.item.length)) retime(d.how, d.mode, d.value, d.prevStart);
+    }
+    addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && edit) { e.preventDefault(); endEdit(e, true); }
+    }, true);
+    tracksEl.addEventListener("dblclick", (e) => {
+      // The lane holds the pointer while a block is pressed, so the double-click lands on it: find the block under it.
+      const block = document.elementFromPoint(e.clientX, e.clientY)?.closest(".block");
+      const item = block && shownTimeline?.parts.find((p) => p.id === block.dataset.id);
+      const how = item && editable(item);
+      if (!how || !how.own || how.layer != null) return;
+      retime(how, "auto");
+    });
+
     // Clicking or dragging on the ruler or a lane moves the opening there, as the scrubber does.
     let dragOn = null;
     const timeAt = (e, target) => {
@@ -354,6 +524,9 @@
       return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * shownSpan;
     };
     tracksEl.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const block = e.target.closest(".block");
+      if (block && beginEdit(e, block)) { e.preventDefault(); return; }
       const target = e.target.closest(".ruler, .lane");
       const s = ready();
       if (!target || !s || !shownSpan) return;
@@ -365,9 +538,11 @@
       state.clock.seek(timeAt(e, target));
     });
     tracksEl.addEventListener("pointermove", (e) => {
+      if (edit) return moveEdit(e);
       if (dragOn && ready()) state.clock.seek(timeAt(e, dragOn));
     });
-    const endDrag = () => {
+    const endDrag = (e) => {
+      if (edit) return endEdit(e, e.type === "pointercancel");
       if (!dragOn) return;
       dragOn = null;
       if (state.wasPlaying) state.clock?.play();
@@ -381,7 +556,7 @@
       if (!view.show || !s) return;
       const tl = s.timeline ?? null;
       const span = tl ? Math.max(1000, Math.round(tl.end)) + TAIL : 0;
-      if (tl !== shownTimeline || span !== shownSpan || view.which !== shownWhich) {
+      if (!edit && (tl !== shownTimeline || span !== shownSpan || view.which !== shownWhich)) {
         shownTimeline = tl;
         shownSpan = span;
         shownWhich = view.which;

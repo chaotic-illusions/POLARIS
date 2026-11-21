@@ -438,6 +438,10 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
 }
 /* The page's Opening section: one box per step. */
 .inspector .step-box { margin: 10px 0; padding: 6px 10px 2px; border: 1px solid #333; border-radius: 12px; }
+.inspector .timing-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5em, 1fr)); gap: 0 8px; }
+.inspector .timing-row .field { min-width: 0; }
+.inspector .timing-row input { width: 100%; box-sizing: border-box; }
+.inspector .step-box .note .pill { font-size: 13px; padding: 0.2em 0.8em; margin-left: 4px; }
 /* The opening's sounds: one line each, name | start time | s | Remove. */
 .inspector .sound-list { display: grid; grid-template-columns: minmax(0, 1fr) 4.4em auto auto; align-items: center; gap: 5px 6px; margin-top: 4px; }
 .inspector .sound-row { display: contents; }

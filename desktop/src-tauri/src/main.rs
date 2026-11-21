@@ -23,7 +23,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tauri::http::Response;
-use tauri::{AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 /// The outline font is licensed for local use only: it is never bundled. The
@@ -688,6 +688,18 @@ async fn preview(
         .map_err(|e| e.to_string())
 }
 
+/// From the preview window: the opening's new timing, dragged on its tracks. Passed on to the
+/// builder window it belongs to (preview-<builder>), which checks it and saves it, with undo.
+/// The only command the preview may call (capabilities/preview.json).
+#[tauri::command]
+async fn preview_timing(app: AppHandle, window: WebviewWindow, timing: Value) -> Result<(), String> {
+    let builder = window.label().strip_prefix("preview-").ok_or("not a preview window")?.to_string();
+    let mut payload = Map::new();
+    payload.insert("to".into(), Value::String(builder.clone()));
+    payload.insert("timing".into(), timing);
+    app.emit_to(builder.as_str(), "preview-timing", Value::Object(payload)).map_err(|e| e.to_string())
+}
+
 fn content_type(path: &str) -> &'static str {
     let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
@@ -817,7 +829,7 @@ fn main() {
             open_site, open_path, launch_file, save_site, save_site_as, export_site, show_folder, preview, read_font,
             choose_font, new_window, window_file, builder_windows, designer,
             start_screen_source, list_sounds, read_sound, add_sound_files, add_sound_folder, remove_sound, show_sounds_folder,
-            write_sound
+            write_sound, preview_timing
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();

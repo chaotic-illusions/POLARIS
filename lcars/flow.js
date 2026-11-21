@@ -770,12 +770,15 @@
       }
       return busy;
     };
+    // A part with a length of its own shows that long (its pieces finish a little inside it); others, until they finish.
+    const shown = (own, start, end) => Math.round(Math.max(own ?? 0, end - start, 0));
     const timeline = {
-      end: Math.round(Math.max(frameLen, contentEnd, ...stepEnds, p.timed ? soundEnd : 0, plan.end)),
+      end: Math.round(Math.max(frameLen, contentEnd, at + (contentLen ?? 0), ...stepEnds, ...nums.map((n, i) => starts[i] + (parts[n]?.length ?? 0)),
+        p.timed ? soundEnd : 0, plan.end)),
       parts: [
         { id: "frame", label: "Frame", start: 0, length: Math.round(frameLen) },
-        { id: "content", label: "Content", start: Math.round(at), length: Math.round(Math.max(0, contentEnd - at)) },
-        ...nums.map((n, i) => ({ id: `step-${n}`, label: `Step ${n}`, start: Math.round(starts[i]), length: Math.round(Math.max(0, stepEnds[i] - starts[i])) })),
+        { id: "content", label: "Content", start: Math.round(at), length: shown(contentLen, at, contentEnd) },
+        ...nums.map((n, i) => ({ id: `step-${n}`, label: `Step ${n}`, start: Math.round(starts[i]), length: shown(parts[n]?.length, starts[i], stepEnds[i]) })),
       ],
       sounds: plan.tracks,
     };

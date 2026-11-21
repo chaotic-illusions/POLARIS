@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "preview",
+  "description": "The preview windows (preview-main, preview-builder-2, ...): one command, preview_timing, which hands the opening's timing dragged on Preview's tracks to the builder window it belongs to. That window checks it before saving it, with undo. Nothing else: pages shown there can't open, save or read anything.",
+  "windows": ["preview-*"],
+  "permissions": [
+    "allow-preview-timing"
+  ]
+}
