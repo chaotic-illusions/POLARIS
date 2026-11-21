@@ -187,7 +187,7 @@ The release build is the one to hand out. Only a debug build (or the builder run
 - *LCARS Access*: a TNG data screen with a field of numbers and two gauges, with the middle left open for your own content.
 - *Holodeck panel*: a holodeck program menu, built only from blocks, elbows, buttons and text.
 
-**Colors in the pickers.** **Preferences** chooses which colors the builder's color pickers offer. Start from a *Color set*: your picks, sets you've saved, the POLARIS picks, one of the *Show themes* (from [thelcars.com](https://www.thelcars.com/colors.php): Classic, Nemesis Blue, Lower Decks, Lower Decks PADD, Picard, Voyager), or a film or series palette. Then tick colors on or off. **Save as my picks** makes the current colors yours, so **Reset to my picks** brings them back. **Save as a new set** keeps them under a name. Sets are kept in your browser. *Preferences* (in *File*) also turns the board's editing grid on or off.
+**Colors in the pickers.** **Preferences** (under *Edit*) chooses which colors the builder's color pickers offer. Start from a *Color set*: your picks, sets you've saved, the POLARIS picks, one of the *Show themes* (from [thelcars.com](https://www.thelcars.com/colors.php): Classic, Nemesis Blue, Lower Decks, Lower Decks PADD, Picard, Voyager), or a film or series palette. Then tick colors on or off. **Save as my picks** makes the current colors yours, so **Reset to my picks** brings them back. **Save as a new set** keeps them under a name. Sets are kept in your browser. *Preferences* (in *File*) also turns the board's editing grid on or off.
 
 **Gauges.** A Gauge is a bracket with a numbered scale and an oval pointer that swings up and down. Every swing goes a random distance, so two gauges never move in step. The pointer moves like a needle with weight: it speeds up and slows down gently, up to a top speed that crosses the scale in about 5 seconds, so short hops stay calm. It pauses for a quarter second each time it changes direction. Untick *Show pointer* for a gauge with no pointer. Each gauge's *Pattern* number varies where its scale breaks and its accent blocks. The swings come from `lcars/pieces.js`, which exported pages load. *Turn* (in *Shape*) lays a gauge on its side or upside down; its numbers stay upright, along the scale. *Turn* with *Side* puts the numbers above, below, left or right, and a negative step reverses them. Turn clockwise is in the *Arrange* menu too.
 
@@ -222,9 +222,10 @@ The UFP emblem is traced the same way, into [`lcars/ufp.svg`](lcars/ufp.svg) (gr
 | `#new` | New Project |
 | `#open` | Open Project |
 | `#resume` | Back to the project the builder kept; its text becomes "Resume" and the project's name |
-| `#recent` | Opens a recent project; the app fills these in order down the page, with each project's name (it remembers 8) |
+| `#recent` | Opens a recent project; the app fills these in order down the page, with each project's name (it remembers 8). The project Resume returns to isn't listed again |
+| `#remove-recent` | Takes the recent project beside it off the list (its file stays): the first goes with the first `#recent` button, and so on down the page |
 
-Resume and recent buttons are always drawn: when there's no project for one, it keeps its own text (blank in the design) and does nothing. Other links do nothing on the start screen. If the file can't be loaded (a builder opened straight from disk), a built-in start screen stands in.
+Resume is always drawn: when there's no project for it, it keeps its own text (blank in the design) and does nothing. Recent and remove buttons without a project to go with are hidden. Other links do nothing on the start screen. If the file can't be loaded (a builder opened straight from disk), a built-in start screen stands in.
 
 **Screen shape.** A page is a grid of cells that scales to fit any window, keeping its proportions. Where the window's shape differs, black fills the edges. Pick a **Screen** preset under *Page* so the page fills the window it's meant for. Each preset is the page area of a maximized browser window (tabs, toolbar and bookmarks bar shown) on Windows 11. **This window** measures the window the builder is open in.
 

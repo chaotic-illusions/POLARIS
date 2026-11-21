@@ -3366,10 +3366,13 @@ ${pieces}
    *   #new      New Project
    *   #open     Open Project
    *   #resume   back to the project the builder kept (its text names the project)
-   *   #recent   a recent project each, filled in order down the page (the app keeps 8)
-   * Resume and recent buttons are always drawn. When there's a project for one,
-   * the project's name replaces its text; otherwise it keeps its own text (blank
-   * is fine) and does nothing. Other links do nothing here.
+   *   #recent   a recent project each, filled in order down the page (the app keeps 8);
+   *             the project Resume returns to isn't listed again
+   *   #remove-recent   takes the recent project beside it off the list (the file
+   *             stays): the first one goes with the first #recent, and so on down
+   * Resume is always drawn: with a project, its name replaces the text; otherwise
+   * it keeps its own text (blank is fine) and does nothing. Recent and remove
+   * buttons without a project to go with are hidden. Other links do nothing here.
    * Until the file loads, or if it can't (a builder opened from disk), the start
    * screen written into index.html stands in.
    * The designer's builder (a debug build, or the builder in a browser) reads the
@@ -3439,8 +3442,7 @@ ${pieces}
     }).join("");
 
     // Fill in the resume and recent projects buttons.
-    const recent = APP ? recents() : [];
-    const recentButtons = page.pieces.filter((p) => p.type === "button" && p.href === "#recent").sort((a, b) => a.y - b.y || a.x - b.x);
+    splashBoard = { board, page };
     const label = (el, text, note) => {
       const body = el.querySelector(".body");
       body.querySelector(".label")?.remove();
@@ -3455,18 +3457,12 @@ ${pieces}
     };
     page.pieces.forEach((p, i) => {
       const el = board.children[i];
-      if (p.type !== "button") return;
-      if (p.href === "#resume") {
-        if (!hasWork()) return idle(el);
-        label(el, `Resume ${site.name || site.pages[0].title || "the last project"}`, unsaved() ? "changes not saved to a file" : fileName || "");
-      } else if (p.href === "#recent") {
-        const r = recent[recentButtons.indexOf(p)];
-        if (!r) { el.hidden = true; return; } // fewer recent projects than buttons: hide the spare ones
-        label(el, r.project || r.name, r.name);
-        el.dataset.path = r.path;
-        el.title = r.path;
-      }
+      if (p.type !== "button" || p.href !== "#resume") return;
+      if (!hasWork()) return idle(el);
+      label(el, `Resume ${site.name || site.pages[0].title || "the last project"}`, unsaved() ? "changes not saved to a file" : fileName || "");
     });
+    relabel = () => fillRecents(label);
+    fillRecents(label);
     const screen = document.createElement("main");
     screen.className = "lcars-screen sp-screen";
     screen.append(board);
@@ -3481,6 +3477,38 @@ ${pieces}
       requestAnimationFrame(() => { if (board.isConnected) LcarsFlow.play(board, { style: page.flow, sound, steps, layers }); });
     }
   }
+
+  /** The designed start screen showing (its board and page), for filling its recent projects again. */
+  let splashBoard = null;
+
+  /** Recent projects other than the one Resume returns to, most recent first. */
+  const samePath = (a, b) => a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
+  const otherRecents = () => (APP ? recents() : []).filter((r) => !(hasWork() && filePath && samePath(r.path, filePath)));
+
+  /** Fill the designed start screen's recent and remove buttons, in order down the page; spare ones hide. */
+  function fillRecents(label) {
+    if (!splashBoard) return;
+    const { board, page } = splashBoard;
+    const recent = otherRecents();
+    const inOrder = (href) => page.pieces.map((p, i) => ({ p, el: board.children[i] }))
+      .filter(({ p }) => p.type === "button" && p.href === href).sort((a, b) => a.p.y - b.p.y || a.p.x - b.p.x);
+    inOrder("#recent").forEach(({ el }, n) => {
+      const r = recent[n];
+      el.hidden = !r; // fewer recent projects than buttons: hide the spare ones
+      if (!r) return;
+      label(el, r.project || r.name, r.name);
+      el.dataset.path = r.path;
+      el.title = r.path;
+    });
+    inOrder("#remove-recent").forEach(({ el }, n) => {
+      const r = recent[n];
+      el.hidden = !r;
+      if (!r) return;
+      el.dataset.path = r.path;
+      el.title = `Take ${r.project || r.name} off the list (the file stays)`;
+    });
+  }
+  let relabel = null;
 
   /**
    * The designed start screen doesn't put focus on a button (that held New
@@ -3514,7 +3542,14 @@ ${pieces}
     if (!a) return;
     e.preventDefault();
     if (a.classList.contains("idle")) return;
-    const act = { "#new": newProject, "#open": openFile, "#resume": resumeProject, "#recent": () => openPath(a.dataset.path) };
+    const act = {
+      "#new": newProject, "#open": openFile, "#resume": resumeProject, "#recent": () => openPath(a.dataset.path),
+      "#remove-recent": () => {
+        if (!a.dataset.path) return;
+        dropRecent(a.dataset.path);
+        relabel?.(); // the rest move up, without playing the opening again
+      },
+    };
     act[a.getAttribute("href")]?.();
   });
 
@@ -3544,7 +3579,7 @@ ${pieces}
       resume.append(b);
     }
     const list = $("#sp-recent");
-    const items = APP ? recents() : [];
+    const items = otherRecents();
     list.replaceChildren(...items.map((r) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -3923,7 +3958,6 @@ ${pieces}
       ["Save as...", "Ctrl+Shift+S", () => savePage(true), { app: true }],
       ["Preview", "", () => COMMANDS.preview()],
       ["Publish...", "", () => COMMANDS.export()],
-      ["Preferences...", "", () => COMMANDS.prefs()],
       ["Close project", "", () => COMMANDS.close()],
     ]],
     ["Edit", "lilac", [
@@ -3936,6 +3970,7 @@ ${pieces}
       ["Delete", "Del", () => remove(), { when: () => selectedPieces().length > 0 }],
       ["Select all", "Ctrl+A", () => selectAll(), { when: () => doc.pieces.length > 0 }],
       ["Select nothing", "Esc", () => select(null), { when: () => selectedPieces().length > 0 }],
+      ["Preferences...", "", () => COMMANDS.prefs()],
     ]],
     ["Arrange", "blue", [
       ["Bring forward", "Ctrl+]", () => restack(1), { when: () => !!selected() }],
