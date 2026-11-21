@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-sounds-folder"
+description = "Enables the show_sounds_folder command without any pre-configured scope."
+commands.allow = ["show_sounds_folder"]
+
+[[permission]]
+identifier = "deny-show-sounds-folder"
+description = "Denies the show_sounds_folder command without any pre-configured scope."
+commands.deny = ["show_sounds_folder"]

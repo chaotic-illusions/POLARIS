@@ -2568,15 +2568,21 @@
     return wrap;
   }
 
-  /* ---- sounds: the built-in ones and those you add, kept in POLARIS (Preferences, Sounds) ---- */
+  /* ---- sounds: your library, a folder you manage (Preferences, Sounds) ---- */
 
   /*
-   * Sounds you add are kept in the builder's database (IndexedDB), which has
-   * room for spoken pieces too, not only clicks. They're read once as the
-   * builder starts; until then (a moment) the lists show the built-in sounds.
+   * In the app your sounds are a folder: Sounds, beside the program. Its
+   * subfolders are groups, nested as on disk; files at its top are loose. Add
+   * sound and Add folder copy into it (a folder keeps its tree, under its own
+   * name); move, rename or delete files there yourself and POLARIS follows (it
+   * looks again when Preferences opens and when you come back to the window).
+   * The builder in a browser can't reach a folder, so it keeps your sounds in
+   * its database, grouped by the folders you add. Sounds kept in the builder
+   * before the folder move into it.
    */
   const SOUND_MAX = 30 * 1024 * 1024;
-  const soundLib = { list: [], db: null }; // list: [{ id, name, file, type, blob }]
+  const SOUND_FILE = /\.(mp3|wav|ogg|m4a|flac)$/i;
+  const soundLib = { list: [], urls: new Map() }; // list: [{ path, name, group, size }, and in a browser id, blob]
   let libDB = null;
   const openLibrary = () => libDB || (libDB = new Promise((resolve, reject) => {
     const req = indexedDB.open("polaris", 2); // 1: sounds; 2: fonts too
@@ -2598,133 +2604,263 @@
   };
   const soundStore = (mode, fn) => libStore("sounds", mode, fn);
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
-  (async () => {
-    try {
-      // Sounds added before the database (kept in localStorage, up to 1 MB each) move into it.
-      const old = JSON.parse(localStorage.getItem("polaris:sounds") || "[]");
-      if (Array.isArray(old) && old.length) {
-        await soundStore("readwrite", (st) => {
-          for (const s of old) if (s?.id && s.data) st.put({ id: s.id, name: s.name, file: s.file, type: typeOf(s.file), blob: fromBase64(`sounds/${s.file}`, s.data) });
-        });
-        localStorage.removeItem("polaris:sounds");
-      }
-      soundLib.list = ((await soundStore("readonly", (st) => st.getAll())) || []).sort(byName);
-      renderInspector();
-      if (prefsDialog.open) renderSounds();
-    } catch (err) {
-      console.warn("POLARIS: your sounds could not be read", err);
-    }
-  })();
-  const mySoundURLs = new Map(); // id -> object URL, for playing it
-  const mySoundFile = (s) => new File([s.blob], s.file, { type: s.type || typeOf(s.file) });
-  const mySoundURL = (s) => {
-    if (!mySoundURLs.has(s.id)) mySoundURLs.set(s.id, URL.createObjectURL(s.blob));
-    return mySoundURLs.get(s.id);
-  };
+  const byText = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
   const stem = (file) => file.replace(/\.[^.]+$/, "");
+  const baseName = (path) => path.split("/").pop();
+  /** A sound's name from its file: "tng-red-alert-1.flac" is TNG RED ALERT 1. */
+  const soundName = (path) => stem(baseName(path)).replace(/[-_]+/g, " ").trim() || baseName(path);
+  const described = (s) => ({ ...s, name: soundName(s.path), group: s.path.includes("/") ? s.path.slice(0, s.path.lastIndexOf("/")) : "" });
 
-  /**
-   * Every sound, by name: the ones you've added, and in the designer's builds (a
-   * debug build, or the builder run from the source) the four POLARIS used to
-   * offer, for the start screen's buttons. A release build ships with none.
-   * Each: { name, note, url() (to play it), value (what a button's Sound keeps),
-   * mine (one you added, so it can be removed) }.
-   */
-  function allSounds() {
-    const builtIn = !designer ? [] : ["key", "tap", "chirp", "padd"].map((k) => ({
-      name: OPTION_NAMES.beep[k], note: k === "padd" ? "trek-padd.js" : BEEPS[k].split("/").pop(),
-      url: async () => (k === "padd" ? "" : libURL(BEEPS[k])), value: k,
-    }));
-    return [
-      ...builtIn,
-      ...soundLib.list.map((s) => ({ name: s.name, note: s.file, url: async () => mySoundURL(s), value: `mine:${s.id}`, mine: s })),
-    ].sort(byName);
+  let soundsLoading = null;
+  /** Read the library again: the folder in the app, the database in a browser. */
+  function loadSounds() {
+    return soundsLoading ||= (async () => {
+      try {
+        let list;
+        if (APP) {
+          // Sounds kept in the builder before the folder go into it (and leave the database once they're there).
+          for (const s of (await soundStore("readonly", (st) => st.getAll()).catch(() => null)) || []) {
+            try {
+              await appCall("write_sound", { path: s.path || s.file, data: { base64: await blobBase64(s.blob) } });
+              await soundStore("readwrite", (st) => st.delete(s.id));
+            } catch { /* kept for next time */ }
+          }
+          list = await appCall("list_sounds");
+        } else {
+          // Sounds added before the database (kept in localStorage, up to 1 MB each) move into it.
+          const old = JSON.parse(localStorage.getItem("polaris:sounds") || "[]");
+          if (Array.isArray(old) && old.length) {
+            await soundStore("readwrite", (st) => {
+              for (const s of old) if (s?.id && s.data) st.put({ id: s.id, path: s.file, file: s.file, blob: fromBase64(`sounds/${s.file}`, s.data) });
+            });
+            localStorage.removeItem("polaris:sounds");
+          }
+          list = ((await soundStore("readonly", (st) => st.getAll())) || []).map((r) => ({ ...r, path: r.path || r.file, size: r.blob?.size || 0 }));
+        }
+        soundLib.list = list.map(described).sort((x, y) => byText(x.path, y.path));
+        renderInspector();
+        if (prefsDialog.open) renderSounds();
+      } catch (err) {
+        console.warn("POLARIS: your sounds could not be read", err);
+      }
+    })().finally(() => { soundsLoading = null; });
+  }
+  loadSounds();
+  // Files moved, renamed or deleted in the folder while away show when you come back.
+  if (APP) addEventListener("focus", () => loadSounds());
+
+  /** A library sound's file. */
+  async function soundBlob(s) {
+    if (!APP) return s.blob;
+    return new Blob([await appCall("read_sound", { path: s.path })], { type: typeOf(baseName(s.path)) });
+  }
+  /** A library sound, ready to play (kept once made, while the file stays the same size). */
+  async function soundURL(s) {
+    const key = `${s.path}|${s.size}`;
+    if (!soundLib.urls.has(key)) soundLib.urls.set(key, URL.createObjectURL(await soundBlob(s)));
+    return soundLib.urls.get(key);
   }
 
   /**
-   * A button's Sound list: None, then every sound by name, the project's own
-   * sound files among them (a sound of yours already in the project shows once).
+   * Every sound: your library's, and in the designer's builds (a debug build, or
+   * the builder run from the source) the four POLARIS used to offer, loose, for
+   * the start screen's buttons. A release build ships with none. Each: { name,
+   * group (a folder path, "" for loose), url() (to play it), value (what a
+   * button's Sound keeps), lib (a library sound, so it can be removed) }.
+   */
+  function allSounds() {
+    const builtIn = !designer ? [] : ["key", "tap", "chirp", "padd"].map((k) => ({
+      name: OPTION_NAMES.beep[k], group: "", url: async () => (k === "padd" ? "" : libURL(BEEPS[k])), value: k,
+    }));
+    return [...builtIn, ...soundLib.list.map((s) => ({ name: s.name, group: s.group, url: () => soundURL(s), value: `lib:${s.path}`, lib: s }))];
+  }
+  const groupLabel = (group) => group.split("/").join(" › ");
+
+  /**
+   * A button's Sound list: None, the loose sounds (and the project's own sound
+   * files) by name, then a heading for each group, by its folders (a sound of
+   * your library already in the project shows once, as the project's).
    */
   function beepChoices(select, current) {
     select.replaceChildren(new Option(OPTION_NAMES.beep.none, "none"));
     const inProject = [...attached.keys()].filter(isSoundSrc);
     const files = new Set(inProject.map((src) => src.slice("sounds/".length).toLowerCase()));
-    const fileOf = (s) => (s.mine ? s.mine.file.toLowerCase() : "");
-    const items = [
-      ...allSounds().filter((s) => !files.has(fileOf(s))).map((s) => [s.value, s.name]),
-      // A project file that came from a library keeps that sound's name.
-      ...inProject.map((src) => [src, allSounds().find((s) => fileOf(s) === src.slice("sounds/".length).toLowerCase())?.name || stem(src.slice("sounds/".length))]),
-    ].sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: "base", numeric: true }));
-    for (const [value, text] of items) select.add(new Option(text, value));
-    if (isSoundSrc(current) && !inProject.includes(current)) select.add(new Option(`${stem(current.slice("sounds/".length))} (not in the project)`, current));
+    const fileOf = (s) => (s.lib ? baseName(s.lib.path).toLowerCase() : "");
+    const sounds = allSounds().filter((s) => !files.has(fileOf(s)));
+    const loose = [
+      ...sounds.filter((s) => !s.group).map((s) => [s.value, s.name]),
+      // A project file that came from your library keeps that sound's name.
+      ...inProject.map((src) => [src, allSounds().find((s) => fileOf(s) === src.slice("sounds/".length).toLowerCase())?.name || soundName(src)]),
+    ].sort((a, b) => byText(a[1], b[1]));
+    for (const [value, text] of loose) select.add(new Option(text, value));
+    for (const group of [...new Set(sounds.map((s) => s.group).filter(Boolean))].sort(byText)) {
+      const g = document.createElement("optgroup");
+      g.label = groupLabel(group);
+      for (const s of sounds.filter((x) => x.group === group).sort(byName)) g.append(new Option(s.name, s.value));
+      select.append(g);
+    }
+    if (isSoundSrc(current) && !inProject.includes(current)) select.add(new Option(`${soundName(current)} (not in the project)`, current));
     // A button from before POLARIS stopped offering its own sounds keeps the one it has (no longer offered otherwise).
     if (current in BEEPS && ![...select.options].some((o) => o.value === current)) select.add(new Option(OPTION_NAMES.beep[current], current));
   }
-  /** A choice from the Sound list as the button keeps it: one of your sounds becomes a sound file of the project. */
+  /** A choice from the Sound list as the button keeps it: a sound of your library becomes a sound file of the project. */
   async function beepFromLibrary(value) {
-    if (!value.startsWith("mine:")) return value;
-    const s = soundLib.list.find((x) => `mine:${x.id}` === value);
+    if (!value.startsWith("lib:")) return value;
+    const s = soundLib.list.find((x) => `lib:${x.path}` === value);
     if (!s) return null;
-    const file = mySoundFile(s);
+    let file;
+    try {
+      file = new File([await soundBlob(s)], baseName(s.path), { type: typeOf(baseName(s.path)) });
+    } catch {
+      toast(`Could not read ${s.path}: it may have moved. Preferences, Sounds shows what's there now.`);
+      loadSounds();
+      return null;
+    }
     const src = await imageSrcFor(file, "sounds");
     attach(src, file);
     return src;
   }
 
-  /** Preferences, Sounds: every sound you've added, by name, a tile each; click one to hear it. */
+  /** Which groups are open in Preferences (folder paths), remembered. */
+  const OPEN_GROUPS_KEY = "polaris:open-sound-groups";
+  const openGroups = (() => {
+    try { return new Set(JSON.parse(localStorage.getItem(OPEN_GROUPS_KEY)) || []); } catch { return new Set(); }
+  })();
+  const keepOpenGroups = () => { try { localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify([...openGroups])); } catch { /* storage unavailable */ } };
+
+  /**
+   * Preferences, Sounds: the groups (folders, nested, each opening and closing),
+   * then the loose sounds; a tile each, click to hear it. Find opens the groups
+   * holding what it finds.
+   */
   function renderSounds() {
     const box = $("#prefs-sounds");
     box.replaceChildren();
     const all = allSounds();
+    const find = $("#prefs-sound-find").value.trim().toLowerCase();
+    const shown = find ? all.filter((s) => `${s.name} ${s.group}`.toLowerCase().includes(find)) : all;
+    $("#prefs-sound-count").textContent = find ? `${shown.length} of ${all.length} sounds` : `${all.length} sound${all.length === 1 ? "" : "s"}`;
     if (!all.length) {
       const p = document.createElement("p");
       p.className = "note";
-      p.textContent = "No sounds yet: Add sound brings in sound effects and voice clips of your own.";
+      p.textContent = "No sounds yet: Add sound or Add folder brings in sound effects and voice clips of your own.";
       box.append(p);
+      return;
     }
-    const find = $("#prefs-sound-find").value.trim().toLowerCase();
-    const shown = find ? all.filter((s) => `${s.name} ${s.note}`.toLowerCase().includes(find)) : all;
-    $("#prefs-sound-count").textContent = find ? `${shown.length} of ${all.length} sounds` : `${all.length} sound${all.length === 1 ? "" : "s"}`;
+    // The folders as a tree.
+    const root = { groups: new Map(), sounds: [] };
     for (const s of shown) {
+      let node = root, path = "";
+      for (const part of s.group ? s.group.split("/") : []) {
+        path = path ? `${path}/${part}` : part;
+        if (!node.groups.has(part)) node.groups.set(part, { name: part, path, groups: new Map(), sounds: [] });
+        node = node.groups.get(part);
+      }
+      node.sounds.push(s);
+    }
+    const count = (node) => node.sounds.length + [...node.groups.values()].reduce((n, g) => n + count(g), 0);
+    const tile = (s) => {
       const r = document.createElement("div");
       r.className = "prefs-sound";
       const play = document.createElement("button");
       play.type = "button";
       play.className = "snd";
       play.textContent = s.name;
-      play.title = `Play ${s.name} (${s.note})`;
+      play.title = `Play ${s.name}${s.lib ? ` (${s.lib.path})` : ""}`;
       play.addEventListener("click", () => {
         play.classList.add("playing");
         setTimeout(() => play.classList.remove("playing"), 400);
-        s.url().then((url) => window.TrekPadd?.audition?.(url)).catch(() => toast(`Could not play ${s.name}`));
+        s.url().then((url) => window.TrekPadd?.audition?.(url)).catch(() => {
+          toast(`Could not play ${s.name}: it may have moved`);
+          loadSounds();
+        });
       });
       r.append(play);
-      // Removing one you added leaves the buttons using it their copy.
-      if (s.mine) r.append(actionButton("Remove", "rose", async () => {
-        await soundStore("readwrite", (st) => st.delete(s.mine.id)).catch(() => {});
-        soundLib.list = soundLib.list.filter((x) => x.id !== s.mine.id);
-        URL.revokeObjectURL(mySoundURLs.get(s.mine.id));
-        mySoundURLs.delete(s.mine.id);
-        renderSounds();
-        renderInspector();
+      // A library sound can be deleted from the folder (buttons using it keep their copy).
+      if (s.lib) r.append(actionButton("Remove", "rose", async () => {
+        if (!(await ask(APP ? `Delete ${s.name} from your Sounds folder?\n\n${s.lib.path}` : `Remove ${s.name} from your sounds?`))) return;
+        try {
+          if (APP) await appCall("remove_sound", { path: s.lib.path });
+          else await soundStore("readwrite", (st) => st.delete(s.lib.id));
+        } catch (err) {
+          toast(`Could not remove ${s.name}: ${err}`);
+        }
+        loadSounds();
       }));
-      box.append(r);
-    }
+      return r;
+    };
+    const tiles = (list) => {
+      const grid = document.createElement("div");
+      grid.className = "sound-tiles";
+      grid.append(...[...list].sort(byName).map(tile));
+      return grid;
+    };
+    const section = (g) => {
+      const d = document.createElement("details");
+      d.className = "sound-group";
+      d.open = !!find || openGroups.has(g.path);
+      const sum = document.createElement("summary");
+      const name = document.createElement("span");
+      name.textContent = g.name;
+      const n = document.createElement("small");
+      n.textContent = `${count(g)}`;
+      sum.append(name, n);
+      d.append(sum);
+      // Folders first, as in Explorer, then the group's own sounds.
+      for (const sub of [...g.groups.values()].sort(byName)) d.append(section(sub));
+      if (g.sounds.length) d.append(tiles(g.sounds));
+      d.addEventListener("toggle", () => {
+        if (find) return; // opened by Find, not by you
+        if (d.open) openGroups.add(g.path);
+        else openGroups.delete(g.path);
+        keepOpenGroups();
+      });
+      return d;
+    };
+    for (const g of [...root.groups.values()].sort(byName)) box.append(section(g));
+    if (root.sounds.length) box.append(tiles(root.sounds));
   }
-  $("#prefs-add-sound").addEventListener("click", () => $("#prefs-sound-file").click());
   $("#prefs-sound-find").addEventListener("input", () => renderSounds());
-  $("#prefs-add-folder").addEventListener("click", () => $("#prefs-sound-folder").click());
-  /** Bring sound files in: each audio file (a folder's, all through its subfolders) once, by its name. */
+  /** What adding brought in, as a note. */
+  const addedNote = ({ added = 0, existing = 0, big = 0 }) => {
+    const notes = [big && `${big} over 30 MB`, existing && `${existing} already there`].filter(Boolean);
+    toast(`Added ${added} sound${added === 1 ? "" : "s"}${notes.length ? ` (left out: ${notes.join(", ")})` : ""}`);
+  };
+  // In the app, adding copies into the Sounds folder (the app does the copying); in a browser, into the database.
+  $("#prefs-add-sound").addEventListener("click", async () => {
+    if (!APP) return $("#prefs-sound-file").click();
+    try {
+      const n = await appCall("add_sound_files");
+      if (n.added + n.existing + n.big) addedNote(n);
+    } catch (err) {
+      toast(`Could not add the sounds: ${err}`);
+    }
+    loadSounds();
+  });
+  $("#prefs-add-folder").addEventListener("click", async () => {
+    if (!APP) return $("#prefs-sound-folder").click();
+    try {
+      const n = await appCall("add_sound_folder");
+      if (n.added + n.existing + n.big) addedNote(n);
+    } catch (err) {
+      toast(`Could not add the folder: ${err}`);
+    }
+    loadSounds();
+  });
+  if (!APP) $("#prefs-open-sounds").style.display = "none"; // a browser has no folder to show
+  $("#prefs-open-sounds").addEventListener("click", () => appCall("show_sounds_folder").catch((err) => toast(`Could not open the folder: ${err}`)));
+  /** In a browser: keep sound files in the database, each by its path (a folder's keep their folders, as groups). */
   async function addSounds(files) {
-    const have = new Set(soundLib.list.map((s) => s.file.toLowerCase()));
+    const have = new Set(soundLib.list.map((s) => s.path.toLowerCase()));
     const added = [];
-    let big = 0, same = 0;
+    let big = 0, existing = 0;
     for (const file of files) {
-      if (!/\.(mp3|wav|ogg|m4a|flac)$/i.test(file.name)) continue; // a folder's pictures, notes and so on
+      if (!SOUND_FILE.test(file.name)) continue; // a folder's pictures, notes and so on
+      const path = file.webkitRelativePath || file.name;
       if (file.size > SOUND_MAX) { big++; continue; }
-      if (have.has(file.name.toLowerCase())) { same++; continue; }
-      have.add(file.name.toLowerCase());
-      added.push({ id: Math.random().toString(36).slice(2, 10), name: stem(file.name), file: file.name, type: file.type || typeOf(file.name), blob: file });
+      if (have.has(path.toLowerCase())) { existing++; continue; }
+      have.add(path.toLowerCase());
+      added.push({ id: Math.random().toString(36).slice(2, 10), path, file: file.name, blob: file });
     }
     if (added.length) {
       try {
@@ -2733,12 +2869,9 @@
         toast(`Could not keep the sounds: ${err?.message || err}`);
         return;
       }
-      soundLib.list = [...soundLib.list, ...added].sort(byName);
-      renderSounds();
-      renderInspector();
     }
-    const notes = [big && `${big} over 30 MB`, same && `${same} already here`].filter(Boolean);
-    if (files.length > 1 || notes.length) toast(`Added ${added.length} sound${added.length === 1 ? "" : "s"}${notes.length ? ` (left out: ${notes.join(", ")})` : ""}`);
+    addedNote({ added: added.length, existing, big });
+    loadSounds();
   }
   for (const id of ["#prefs-sound-file", "#prefs-sound-folder"]) {
     $(id).addEventListener("change", async (e) => {
@@ -4328,7 +4461,7 @@ ${pieces}
   });
 
   const COMMANDS = {
-    prefs: () => { renderPrefs(); renderSounds(); renderFonts(); prefsDialog.showModal(); },
+    prefs: () => { renderPrefs(); renderSounds(); renderFonts(); prefsDialog.showModal(); loadSounds(); },
     new: newProject,
     close: async () => {
       if (unsaved() && !(await ask(`Close ${site.name || "this project"}? Its changes aren't saved to a file yet; you can still resume it from the start screen.`))) return;

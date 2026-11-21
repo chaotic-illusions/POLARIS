@@ -373,6 +373,167 @@ async fn start_screen_source() -> Option<String> {
     fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builder/start-screen.lcars")).ok()
 }
 
+/* ---- the sound library: a Sounds folder beside the program ---- */
+
+const SOUND_EXTS: [&str; 5] = ["mp3", "wav", "ogg", "m4a", "flac"];
+const SOUND_MAX: u64 = 30 * 1024 * 1024;
+
+fn is_sound(p: &Path) -> bool {
+    p.extension().and_then(|e| e.to_str()).is_some_and(|e| SOUND_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// The sound library: a Sounds folder beside the program, which the user manages too (its
+/// subfolders are groups). The installer puts POLARIS in the user's own folder, so it can
+/// write there. Made if it isn't there.
+fn sounds_dir(_app: &AppHandle) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe.parent().ok_or("no folder for the program")?.join("Sounds");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// A library sound's file, from its path inside the library (plain names only).
+fn library_sound(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
+    let file = sounds_dir(app)?.join(safe_relative(path)?);
+    if is_sound(&file) { Ok(file) } else { Err(format!("not a sound: {path}")) }
+}
+
+#[derive(Serialize)]
+struct LibrarySound {
+    path: String,
+    size: u64,
+}
+
+fn walk_sounds(dir: &Path, rel: &str, out: &mut Vec<LibrarySound>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = e.path();
+        let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+        if path.is_dir() {
+            walk_sounds(&path, &rel, out);
+        } else if is_sound(&path) {
+            out.push(LibrarySound { path: rel, size: e.metadata().map(|m| m.len()).unwrap_or(0) });
+        }
+    }
+}
+
+/// Every sound in the library, by its path inside it ("TNG/Alerts/red-alert.flac").
+#[tauri::command]
+async fn list_sounds(app: AppHandle) -> Result<Vec<LibrarySound>, String> {
+    let mut out = Vec::new();
+    walk_sounds(&sounds_dir(&app)?, "", &mut out);
+    Ok(out)
+}
+
+/// A library sound's bytes.
+#[tauri::command]
+async fn read_sound(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    fs::read(library_sound(&app, &path)?).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize, Default)]
+struct Added {
+    added: usize,
+    existing: usize,
+    big: usize,
+}
+
+/// Copy one sound into the library at `to`, unless one is there already or it's too big.
+fn copy_sound(from: &Path, to: &Path, n: &mut Added) -> Result<(), String> {
+    if !is_sound(from) {
+        return Ok(());
+    }
+    if fs::metadata(from).map(|m| m.len()).unwrap_or(0) > SOUND_MAX {
+        n.big += 1;
+        return Ok(());
+    }
+    if to.exists() {
+        n.existing += 1;
+        return Ok(());
+    }
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::copy(from, to).map_err(|e| e.to_string())?;
+    n.added += 1;
+    Ok(())
+}
+
+fn copy_tree(from: &Path, to: &Path, n: &mut Added) -> Result<(), String> {
+    for e in fs::read_dir(from).map_err(|e| e.to_string())?.flatten() {
+        let path = e.path();
+        let target = to.join(e.file_name());
+        if path.is_dir() {
+            copy_tree(&path, &target, n)?;
+        } else {
+            copy_sound(&path, &target, n)?;
+        }
+    }
+    Ok(())
+}
+
+/// Ask for sound files and copy them into the library's top level (loose sounds).
+#[tauri::command]
+async fn add_sound_files(app: AppHandle, window: WebviewWindow) -> Result<Added, String> {
+    let picked = app.dialog().file().set_title("Add sounds").add_filter("Sounds", &SOUND_EXTS).set_parent(&window).blocking_pick_files();
+    let dir = sounds_dir(&app)?;
+    let mut n = Added::default();
+    for file in picked.unwrap_or_default() {
+        let path = file.into_path().map_err(|e| e.to_string())?;
+        if let Some(name) = path.file_name() {
+            copy_sound(&path, &dir.join(name), &mut n)?;
+        }
+    }
+    Ok(n)
+}
+
+/// Ask for a folder and copy its sounds into the library as a group of that name, its subfolders inside.
+#[tauri::command]
+async fn add_sound_folder(app: AppHandle, window: WebviewWindow) -> Result<Added, String> {
+    let Some(picked) = app.dialog().file().set_title("Add a folder of sounds").set_parent(&window).blocking_pick_folder() else {
+        return Ok(Added::default());
+    };
+    let from = picked.into_path().map_err(|e| e.to_string())?;
+    let dir = sounds_dir(&app)?;
+    if path_key(&from).starts_with(&path_key(&dir)) {
+        return Err("That folder is already in your sounds folder".into());
+    }
+    let name = from.file_name().ok_or("Choose a folder, not a drive")?;
+    let mut n = Added::default();
+    copy_tree(&from, &dir.join(name), &mut n)?;
+    Ok(n)
+}
+
+/// Delete a sound from the library (the builder asks first).
+#[tauri::command]
+async fn remove_sound(app: AppHandle, path: String) -> Result<(), String> {
+    fs::remove_file(library_sound(&app, &path)?).map_err(|e| e.to_string())
+}
+
+/// Show the library folder in Explorer.
+#[tauri::command]
+async fn show_sounds_folder(app: AppHandle) -> Result<(), String> {
+    std::process::Command::new("explorer").arg(sounds_dir(&app)?).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Put a sound into the library (the builder's sounds from before the folder move in). False if one is there already.
+#[tauri::command]
+async fn write_sound(app: AppHandle, path: String, data: FileEntry) -> Result<bool, String> {
+    let file = library_sound(&app, &path)?;
+    if file.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&file, decode(&data)?).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 /// How many builder windows are open (closing the last one keeps its work for next time).
 #[tauri::command]
 async fn builder_windows(app: AppHandle) -> usize {
@@ -648,7 +809,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_site, open_path, launch_file, save_site, save_site_as, export_site, show_folder, preview, read_font,
             choose_font, new_window, window_file, builder_windows, designer,
-            start_screen_source
+            start_screen_source, list_sounds, read_sound, add_sound_files, add_sound_folder, remove_sound, show_sounds_folder,
+            write_sound
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();

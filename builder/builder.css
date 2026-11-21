@@ -339,7 +339,15 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
 .prefs-tabs .pill { font-size: 19px; padding: 0.3em 1.4em; background: var(--orange); }
 .prefs-tabs .pill[aria-selected="false"] { background: #333; color: var(--peach); }
 /* Sounds: a tile each, in columns; click one to hear it. */
-#prefs-sounds { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
+.sound-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; margin: 4px 0 10px; }
+/* Groups: the Sounds folder's folders, nested, each opening and closing. */
+.sound-group > summary { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; cursor: pointer; list-style: none; color: var(--orange); font-size: 20px; letter-spacing: 0.06em; }
+.sound-group > summary::-webkit-details-marker { display: none; }
+.sound-group > summary::before { content: "\25B8"; font-size: 0.75em; color: var(--dkblue); width: 1em; }
+.sound-group[open] > summary::before { content: "\25BE"; }
+.sound-group > summary small { color: #888; font-size: 15px; }
+.sound-group .sound-group { margin-left: 22px; }
+.sound-group > .sound-tiles { margin-left: 22px; }
 .prefs-sound { display: flex; align-items: center; gap: 6px; border: 1px solid #222; border-radius: 10px; }
 .prefs-sound:hover { background: #111; border-color: #333; }
 .prefs-sound .snd {

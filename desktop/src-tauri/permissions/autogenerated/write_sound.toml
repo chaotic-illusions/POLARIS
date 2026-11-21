@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-write-sound"
+description = "Enables the write_sound command without any pre-configured scope."
+commands.allow = ["write_sound"]
+
+[[permission]]
+identifier = "deny-write-sound"
+description = "Denies the write_sound command without any pre-configured scope."
+commands.deny = ["write_sound"]

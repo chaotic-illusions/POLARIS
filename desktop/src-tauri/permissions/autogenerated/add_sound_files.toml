@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-add-sound-files"
+description = "Enables the add_sound_files command without any pre-configured scope."
+commands.allow = ["add_sound_files"]
+
+[[permission]]
+identifier = "deny-add-sound-files"
+description = "Denies the add_sound_files command without any pre-configured scope."
+commands.deny = ["add_sound_files"]
