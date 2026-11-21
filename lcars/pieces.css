@@ -50,6 +50,8 @@
 .piece {
   --c: var(--lcars-atomic-tangerine);
   --fs: 17; /* label size in design px */
+  /* A piece in a font of its own (--pf, set by the builder); otherwise the board's. */
+  font-family: var(--pf, "Helvetica Ultra Compressed"), "Antonio", "Arial Narrow", sans-serif;
   --rot: 0;
   position: absolute;
   left: calc(var(--x) * var(--k));
@@ -150,6 +152,7 @@
   inset: 0;
   height: auto;
   --padd-font-size: calc(var(--fs) * var(--u));
+  --padd-font: var(--pf, "Helvetica Ultra Compressed"), "Antonio", "Arial Narrow", sans-serif; /* its own font, if it has one */
   --padd-padding: calc(0.5 * var(--k)) calc(0.8 * var(--k));
 }
 

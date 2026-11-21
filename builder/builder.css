@@ -327,6 +327,14 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
 .prefs-actions .pill:disabled { opacity: 0.35; cursor: default; }
 #prefs-sound-find { min-width: 240px; padding: 4px 10px; border: 1px solid #333; border-radius: 10px; background: #0b0b12; color: #ddd; font: inherit; }
 #prefs-sound-count { margin-left: auto; font-size: 17px; }
+#prefs-font-find { min-width: 240px; padding: 4px 10px; border: 1px solid #333; border-radius: 10px; background: #0b0b12; color: #ddd; font: inherit; }
+#prefs-font-count { margin-left: auto; font-size: 17px; }
+#prefs-font-default { font-size: 22px; color: var(--peach); }
+/* Fonts: a tile each, its name drawn in itself. */
+#prefs-fonts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.prefs-font { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px solid #222; border-radius: 10px; }
+.prefs-font .sample { flex: 1; min-width: 0; font-size: 26px; color: var(--peach); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prefs-font .pill { flex: none; font-size: 14px; padding: 0.2em 0.8em; }
 .prefs-tabs { display: flex; gap: 6px; margin: 12px 0 2px; }
 .prefs-tabs .pill { font-size: 19px; padding: 0.3em 1.4em; background: var(--orange); }
 .prefs-tabs .pill[aria-selected="false"] { background: #333; color: var(--peach); }

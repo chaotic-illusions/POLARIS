@@ -69,6 +69,7 @@
         <button type="button" class="pill" role="tab" data-tab="board" aria-selected="false" aria-controls="prefs-tab-board" tabindex="-1">Board</button>
         <button type="button" class="pill" role="tab" data-tab="colors" aria-selected="true" aria-controls="prefs-tab-colors">Colors</button>
         <button type="button" class="pill" role="tab" data-tab="sounds" aria-selected="false" aria-controls="prefs-tab-sounds" tabindex="-1">Sounds</button>
+        <button type="button" class="pill" role="tab" data-tab="fonts" aria-selected="false" aria-controls="prefs-tab-fonts" tabindex="-1">Fonts</button>
       </nav>
       <section id="prefs-tab-board" role="tabpanel" hidden>
       <h2>Board</h2>
@@ -107,6 +108,27 @@
         <span id="prefs-sound-count"></span>
       </div>
       <div id="prefs-sounds"></div>
+      </section>
+      <section id="prefs-tab-fonts" role="tabpanel" hidden>
+      <h2>Default font</h2>
+      <p class="note">Every piece uses it unless you choose another. It's your own copy of the LCARS font: the app keeps a copy on this
+        computer and never ships it. Published pages draw their text as shapes, so they look the same everywhere without the font.</p>
+      <div class="prefs-actions">
+        <span class="prefs-set" id="prefs-font-default"></span>
+        <button type="button" class="pill blue" id="prefs-choose-default-font">Choose font file</button>
+      </div>
+      <h2>Your fonts</h2>
+      <p class="note">OTF, TTF or WOFF files, kept in POLARIS for every project; choose one for a piece with its Font (beside Text size).
+        A piece using one carries the file in its project. Published text is drawn as shapes in it, PADDs too, so no font goes with the site.</p>
+      <div class="prefs-actions">
+        <button type="button" class="pill orange" id="prefs-add-font">Add font</button>
+        <button type="button" class="pill orange" id="prefs-add-font-folder">Add folder</button>
+        <input type="file" id="prefs-font-file" accept=".otf,.ttf,.woff,font/otf,font/ttf,font/woff" multiple hidden>
+        <input type="file" id="prefs-font-folder" webkitdirectory multiple hidden>
+        <label class="prefs-set">Find <input type="search" id="prefs-font-find" placeholder="name" autocomplete="off"></label>
+        <span id="prefs-font-count"></span>
+      </div>
+      <div id="prefs-fonts"></div>
       </section>
     </form>
   </dialog>

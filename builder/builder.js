@@ -246,6 +246,7 @@
     if (p.hover) v["--c-hover"] = colorValue(p.hover);
     if (p.active) v["--c-active"] = colorValue(p.active);
     if (p.fs) v["--fs"] = p.fs;
+    if (p.font) v["--pf"] = `"${fontFamily(p.font)}"`;
     if (p.type === "elbow") Object.assign(v, { "--S": p.side, "--B": p.bar });
     if ((p.type === "image" || p.type === "frame") && p.imgMode === "crop") {
       Object.assign(v, { "--zoom": p.zoom ?? 1, "--px": p.px ?? 50, "--py": p.py ?? 50 });
@@ -809,6 +810,7 @@
     for (const [key, value] of Object.entries(p)) {
       if (key === "id" || key === "type") continue;
       if (key === "beep" && isSoundSrc(value)) continue; // a sound file of the project's own
+      if (key === "font") { if (!isFontSrc(value)) delete p[key]; continue; } // a font file of the project's own, or the default
       const fallback = defaults[key];
       if (choices[key]) {
         if (!choices[key].includes(value)) {
@@ -846,6 +848,10 @@
 
   /** A sound the project carries: sounds/<name>. */
   const isSoundSrc = (v) => typeof v === "string" && /^sounds\/[^/\\]+$/.test(v);
+  /** A font file of the project's own: fonts/name.otf (a piece's Font). */
+  const isFontSrc = (v) => typeof v === "string" && /^fonts\/[^/\\"]+\.(otf|ttf|woff)$/i.test(v);
+  /** The CSS family a project font is known by, on the board and in published pages. */
+  const fontFamily = (src) => `POLARIS ${src}`;
 
   function cleanPage(doc) {
     const blank = blankDoc();
@@ -1729,7 +1735,9 @@
   // Every panel runs the same way: colours, then shape, then what the piece shows (picture, text),
   // then how it moves and what it does; its Opening step and its exact position come last.
   const POSITION = ["Position and size", [["x", "X", "int"], ["y", "Y", "int"], ["w", "Width", "int"], ["h", "Height", "int"]], { row: true, closed: true }];
-  const LABEL = ["Text", [TEXT_COLOR, ["label", "Label · * = dot", "rich"], ["fs", "Text size", "num"], ...ALIGN, FIT]];
+  /** A piece's font: the default (Preferences, Fonts), or one of yours. */
+  const FONT = ["font", "Font", "font"];
+  const LABEL = ["Text", [TEXT_COLOR, ["label", "Label · * = dot", "rich"], ["fs", "Text size", "num"], FONT, ...ALIGN, FIT]];
   const MOTION = ["Motion", [BLINK, BLINK_TO]];
   const PICTURE = ["Image", [["src", "Image (path or URL)", "text"], ["file", "Or choose a file", "file"], ["alt", "Description for screen readers", "text"]]];
   const SIZING = [["turn", "Turn the picture", [0, 90, 180, 270]], ["imgMode", "Sizing", ["keep", "crop", "fit"]],
@@ -1748,22 +1756,22 @@
       ["Shape", [["flip", "Flip", "flip"], ["side", "Sidebar width (the wide part)", "num"], ["bar", "Bar thickness (the narrow arm)", "num"],
         ["rx", "Outer curve width", "num"], ["ry", "Outer curve height", "num"], ["ri", "Inner curve", "num"]]],
       LABEL, MOTION],
-    text: [["Text", [TEXT_COLOR, ["label", "Text · * = dot", "rich"], ["fs", "Text size", "num"], ...ALIGN, FIT,
+    text: [["Text", [TEXT_COLOR, ["label", "Text · * = dot", "rich"], ["fs", "Text size", "num"], FONT, ...ALIGN, FIT,
       ["wrap", "Wrap lines to the box (for paragraphs)", "check"]]], MOTION],
-    padd: [["Text", [TEXT_COLOR, ["text", "PADD text", "rich-later"], ["fs", "Text size", "num"]]],
+    padd: [["Text", [TEXT_COLOR, ["text", "PADD text", "rich-later"], ["fs", "Text size", "num"], FONT]],
       ["Motion", [["hold", "Seconds per page (0 = manual)", "num"]]]],
     image: [["Color", [["border", "Border color", "color-none"]]], ["Shape", SIZING], PICTURE,
-      ["Caption", [TEXT_COLOR, ["caption", "Caption", "rich1"], ["fs", "Caption size", "num"]]]],
+      ["Caption", [TEXT_COLOR, ["caption", "Caption", "rich1"], ["fs", "Caption size", "num"], FONT]]],
     frame: [["Colors", [["color", "Main color", "color"], ["color2", "Accent color", "color"], ["color3", "Second accent", "color"]]],
       ["Shape", [["variant", "Layout", ["bracket-left", "bracket-right", "twin", "viewscreen"]], ["bar", "Thickness (side and bars)", "num"], ...SIZING]],
       PICTURE,
-      ["Text", [TEXT_COLOR, ["title", "Title (header)", "rich1"], ["caption", "Description (footer)", "rich1"], ["fs", "Text size", "num"]]]],
-    quote: [["Color", [["color", "Bar color", "color"]]], ["Text", [TEXT_COLOR, ["text", "Quote", "rich"], ["fs", "Text size", "num"]]], MOTION],
+      ["Text", [TEXT_COLOR, ["title", "Title (header)", "rich1"], ["caption", "Description (footer)", "rich1"], ["fs", "Text size", "num"], FONT]]],
+    quote: [["Color", [["color", "Bar color", "color"]]], ["Text", [TEXT_COLOR, ["text", "Quote", "rich"], ["fs", "Text size", "num"], FONT]], MOTION],
     textbar: [["Colors", [["color", "Bar color", "color"], ["color2", "End cap color", "color-auto"]]],
-      ["Text", [TEXT_COLOR, ["label", "Text", "rich1"], ["titlePos", "Text position", ["start", "end"]], ["fs", "Text size", "num"]]], MOTION],
-    list: [["Color", [["color", "Bullet color", "color"]]], ["Text", [TEXT_COLOR, ["text", "Items, one per line", "rich"], ["fs", "Text size", "num"]]], MOTION],
+      ["Text", [TEXT_COLOR, ["label", "Text", "rich1"], ["titlePos", "Text position", ["start", "end"]], ["fs", "Text size", "num"], FONT]], MOTION],
+    list: [["Color", [["color", "Bullet color", "color"]]], ["Text", [TEXT_COLOR, ["text", "Items, one per line", "rich"], ["fs", "Text size", "num"], FONT]], MOTION],
     cascade: [["Colors", [["color", "Number color", "color"], ["color2", "Highlight color", "color"]]],
-      ["Shape", [["columns", "Columns", "int"], ["fs", "Text size", "num"]]],
+      ["Shape", [["columns", "Columns", "int"], ["fs", "Text size", "num"], FONT]],
       ["Motion", [["numMotion", "Motion", ["scroll", "fill", "sweep", "shift", "update", "still"]],
         ["highlights", "Highlighted numbers", ["fixed", "move", "none"]], ["seed", "Pattern (any number)", "int"]]]],
     gauge: [
@@ -1774,7 +1782,7 @@
         ["from", "Start at", "real", COUNTED], ["step", "Step (negative counts down)", "real", COUNTED],
         ["count", "How many numbers", "int", COUNTED], ["digits", "Digits (pads with zeros)", "int", COUNTED],
         ["labels", "Numbers, one per line", "rich", TYPED],
-        ["ticks", "Tick marks between numbers", "int"], ["fs", "Text size", "num"]]],
+        ["ticks", "Tick marks between numbers", "int"], ["fs", "Text size", "num"], FONT]],
       ["Motion", [["animate", "Pointer drifts up and down", "check", POINTER_ON]]]],
     wave: [
       ["Colors", [["color", "Main color", "color"], ["color2", "Second color", "color"], ["grad", "Blend", ["lines", "height", "across", "solid"]],
@@ -2382,31 +2390,30 @@
     status.textContent = "Looking for the font file...";
     if (window.lcarsOutline) lcarsOutline.getFont(fontSource()).then(show, () => show(null));
     else status.textContent = "The outline tools did not load, so text exports as live text.";
-    const choose = actionButton("Choose font file", "blue", async () => {
-      try {
-        if (APP) {
-          if (!(await appCall("choose_font"))) return;
-          lcarsOutline.forget();
-          const font = await lcarsOutline.getFont(fontSource());
-          if (!font) throw new Error("not a font this tool can read");
-          await useAppFont();
-          show(font);
-          toast(`Using ${font.name}`);
-          return;
-        }
+    const where = document.createElement("p");
+    where.className = "note";
+    where.textContent = "The default font, and fonts of your own, are under Edit > Preferences, Fonts.";
+    return [field(doc, "textShapes", "Publish text as shapes", "check", { page: true }), status, where];
+  }
+
+  /** Choose your copy of the LCARS font, the default for every piece (Preferences, Fonts). */
+  async function chooseDefaultFont() {
+    try {
+      if (APP) {
+        if (!(await appCall("choose_font"))) return;
+        lcarsOutline.forget();
+        const font = await lcarsOutline.getFont(fontSource());
+        if (!font) throw new Error("not a font this tool can read");
+        await useAppFont();
+        toast(`Using ${font.name}`);
+      } else {
         const font = await lcarsOutline.chooseFont({ postscriptNames: FONT_PS_NAMES });
-        if (font) {
-          show(font);
-          toast(`Using ${font.name}`);
-        }
-      } catch (err) {
-        toast(`Could not read that font: ${err.message}`);
+        if (font) toast(`Using ${font.name}`);
       }
-    });
-    const actions = document.createElement("div");
-    actions.className = "actions tight";
-    actions.append(choose);
-    return [field(doc, "textShapes", "Publish text as shapes", "check", { page: true }), status, actions];
+      renderInspector();
+    } catch (err) {
+      toast(`Could not read that font: ${err.message}`);
+    }
   }
 
   function actionButton(text, color, fn) {
@@ -2436,7 +2443,7 @@
         if (key === "cell") for (const p of doc.pieces) if (p.type === "elbow") renderPiece(p);
       } else {
         renderPiece(target);
-        if (key === "fs" || key === "fit") fitToText(target);
+        if (key === "fs" || key === "fit" || key === "font") fitToText(target);
         if (["imgMode", "bar", "variant", "caption", "fs", "turn"].includes(key) && applyAspect(target)) renderPiece(target, { inner: false });
         syncSelection();
         if (key === "color") syncEditors(target); // filled pieces' editors show the fill
@@ -2476,6 +2483,20 @@
     }
     if (String(kind).startsWith("rich")) {
       wrap.append(richEditor(target, key, { multiline: kind !== "rich1", later: kind === "rich-later" }));
+      return wrap;
+    }
+    if (kind === "font") {
+      const select = document.createElement("select");
+      fontChoices(select, target[key] || "");
+      select.value = target[key] || "";
+      select.dataset.key = key;
+      select.addEventListener("change", async () => {
+        const v = await fontFromLibrary(select.value);
+        if (v == null) return;
+        update(v, true);
+        if (v !== select.value) renderInspector(); // it's one of the project's fonts now
+      });
+      wrap.append(select);
       return wrap;
     }
     if (kind === "file") {
@@ -2556,21 +2577,26 @@
    */
   const SOUND_MAX = 30 * 1024 * 1024;
   const soundLib = { list: [], db: null }; // list: [{ id, name, file, type, blob }]
-  const soundDB = () => soundLib.db || (soundLib.db = new Promise((resolve, reject) => {
-    const req = indexedDB.open("polaris", 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("sounds", { keyPath: "id" });
+  let libDB = null;
+  const openLibrary = () => libDB || (libDB = new Promise((resolve, reject) => {
+    const req = indexedDB.open("polaris", 2); // 1: sounds; 2: fonts too
+    req.onupgradeneeded = () => {
+      for (const name of ["sounds", "fonts"]) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: "id" });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   }));
-  const soundStore = async (mode, fn) => {
-    const db = await soundDB();
+  /** Work on one of the library's stores (sounds or fonts) in a transaction; resolves with fn's request's result. */
+  const libStore = async (name, mode, fn) => {
+    const db = await openLibrary();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction("sounds", mode);
-      const out = fn(tx.objectStore("sounds"));
+      const tx = db.transaction(name, mode);
+      const out = fn(tx.objectStore(name));
       tx.oncomplete = () => resolve(out?.result);
       tx.onerror = () => reject(tx.error);
     });
   };
+  const soundStore = (mode, fn) => libStore("sounds", mode, fn);
   const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
   (async () => {
     try {
@@ -2719,6 +2745,143 @@
       const files = [...e.target.files];
       e.target.value = "";
       await addSounds(files);
+    });
+  }
+
+  /* ---- fonts: the default (your LCARS font) and the ones you add (Preferences, Fonts) ---- */
+
+  /*
+   * Fonts you add are kept in the builder's database like your sounds. POLARIS
+   * ships none: the default is your own copy of the LCARS font (Choose font
+   * file). A piece using one of yours carries the file in its project; published
+   * pages draw their text as shapes, so no font goes with a site (unless text
+   * is published as live text).
+   */
+  const FONT_MAX = 20 * 1024 * 1024;
+  const fontLib = { list: [] }; // [{ id, name, file, blob }]
+  const libFamily = (f) => `POLARIS library ${f.id}`;
+  const registered = new Map(); // CSS family -> FontFace on the builder's page
+  async function registerFont(family, data) {
+    if (registered.has(family)) return;
+    try {
+      const face = new FontFace(family, data instanceof Blob ? await data.arrayBuffer() : data);
+      registered.set(family, face);
+      document.fonts.add(await face.load());
+    } catch {
+      registered.delete(family);
+    }
+  }
+  (async () => {
+    try {
+      fontLib.list = ((await libStore("fonts", "readonly", (st) => st.getAll())) || []).sort(byName);
+      for (const f of fontLib.list) registerFont(libFamily(f), f.blob);
+      renderInspector();
+      if (prefsDialog.open) renderFonts();
+    } catch (err) {
+      console.warn("POLARIS: your fonts could not be read", err);
+    }
+  })();
+  const defaultFontName = () => window.lcarsOutline?.font?.name || "the LCARS font";
+
+  /** A piece's Font list: the default, then every font by name (yours, and the project's own). */
+  function fontChoices(select, current) {
+    select.replaceChildren(new Option(`Default (${defaultFontName()})`, ""));
+    const inProject = [...attached.keys()].filter(isFontSrc);
+    const files = new Set(inProject.map((src) => src.slice("fonts/".length).toLowerCase()));
+    const items = [
+      ...fontLib.list.filter((f) => !files.has(f.file.toLowerCase())).map((f) => [`mine:${f.id}`, f.name]),
+      ...inProject.map((src) => [src, fontLib.list.find((f) => f.file.toLowerCase() === src.slice(6).toLowerCase())?.name || stem(src.slice(6))]),
+    ].sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: "base", numeric: true }));
+    for (const [value, text] of items) select.add(new Option(text, value));
+    if (isFontSrc(current) && !inProject.includes(current)) select.add(new Option(`${stem(current.slice(6))} (not in the project)`, current));
+  }
+  /** A choice from the Font list as the piece keeps it: one of your fonts becomes a font file of the project. */
+  async function fontFromLibrary(value) {
+    if (!value.startsWith("mine:")) return value;
+    const f = fontLib.list.find((x) => `mine:${x.id}` === value);
+    if (!f) return null;
+    const file = new File([f.blob], f.file, { type: typeOf(f.file) });
+    const src = await imageSrcFor(file, "fonts");
+    attach(src, file);
+    return src;
+  }
+
+  /** Preferences, Fonts: the default font (and choosing it), then yours, each drawn in itself. */
+  function renderFonts() {
+    const status = $("#prefs-font-default");
+    status.textContent = "Looking for the font file...";
+    if (window.lcarsOutline) {
+      lcarsOutline.getFont(fontSource()).then((font) => {
+        status.textContent = font ? `${font.name} (${font.source})` : "None yet: choose your copy of the LCARS font";
+        status.style.fontFamily = font ? '"Helvetica Ultra Compressed", "Antonio", sans-serif' : "";
+      }, () => { status.textContent = "None yet: choose your copy of the LCARS font"; });
+    }
+    const box = $("#prefs-fonts");
+    box.replaceChildren();
+    if (!fontLib.list.length) {
+      const p = document.createElement("p");
+      p.className = "note";
+      p.textContent = "No fonts of yours yet: Add font brings in OTF, TTF or WOFF files.";
+      box.append(p);
+    }
+    const find = $("#prefs-font-find").value.trim().toLowerCase();
+    const shown = find ? fontLib.list.filter((f) => `${f.name} ${f.file}`.toLowerCase().includes(find)) : fontLib.list;
+    $("#prefs-font-count").textContent = find ? `${shown.length} of ${fontLib.list.length} fonts` : `${fontLib.list.length} font${fontLib.list.length === 1 ? "" : "s"}`;
+    for (const f of shown) {
+      const r = document.createElement("div");
+      r.className = "prefs-font";
+      const sample = document.createElement("span");
+      sample.className = "sample";
+      sample.textContent = `${f.name} 0123`;
+      sample.style.fontFamily = `"${libFamily(f)}", sans-serif`;
+      sample.title = f.file;
+      r.append(sample, actionButton("Remove", "rose", async () => {
+        await libStore("fonts", "readwrite", (st) => st.delete(f.id)).catch(() => {});
+        fontLib.list = fontLib.list.filter((x) => x.id !== f.id);
+        renderFonts();
+        renderInspector(); // pieces using it keep their copy
+      }));
+      box.append(r);
+    }
+  }
+  $("#prefs-font-find").addEventListener("input", () => renderFonts());
+  $("#prefs-add-font").addEventListener("click", () => $("#prefs-font-file").click());
+  $("#prefs-add-font-folder").addEventListener("click", () => $("#prefs-font-folder").click());
+  $("#prefs-choose-default-font").addEventListener("click", () => chooseDefaultFont().then(renderFonts));
+  /** Bring font files in: each font file (a folder's, all through its subfolders) once, by its own name. */
+  async function addFonts(files) {
+    const have = new Set(fontLib.list.map((f) => f.file.toLowerCase()));
+    const added = [];
+    let big = 0, same = 0, unread = 0;
+    for (const file of files) {
+      if (!/\.(otf|ttf|woff)$/i.test(file.name)) continue;
+      if (file.size > FONT_MAX) { big++; continue; }
+      if (have.has(file.name.toLowerCase())) { same++; continue; }
+      const name = window.lcarsOutline?.fontName(await file.arrayBuffer());
+      if (!name) { unread++; continue; }
+      have.add(file.name.toLowerCase());
+      added.push({ id: Math.random().toString(36).slice(2, 10), name, file: file.name, blob: file });
+    }
+    if (added.length) {
+      try {
+        await libStore("fonts", "readwrite", (st) => { for (const f of added) st.put(f); });
+      } catch (err) {
+        toast(`Could not keep the fonts: ${err?.message || err}`);
+        return;
+      }
+      for (const f of added) await registerFont(libFamily(f), f.blob);
+      fontLib.list = [...fontLib.list, ...added].sort(byName);
+      renderFonts();
+      renderInspector();
+    }
+    const notes = [big && `${big} over 20 MB`, same && `${same} already here`, unread && `${unread} not readable as fonts`].filter(Boolean);
+    if (files.length > 1 || notes.length) toast(`Added ${added.length} font${added.length === 1 ? "" : "s"}${notes.length ? ` (left out: ${notes.join(", ")})` : ""}`);
+  }
+  for (const id of ["#prefs-font-file", "#prefs-font-folder"]) {
+    $(id).addEventListener("change", async (e) => {
+      const files = [...e.target.files];
+      e.target.value = "";
+      await addFonts(files);
     });
   }
 
@@ -2974,9 +3137,16 @@
    * Save, open, preview and export
    * ------------------------------------------------------------------ */
 
-  function pageCSS(page = doc) {
+  function pageCSS(page = doc, fontURL = null) {
     const lines = [`/* Generated by POLARIS. */`,
       `.lcars-board { --cols: ${page.cols}; --rows: ${page.rows}; --cell: ${page.cell}; }`];
+    // Text left live (not drawn as shapes) needs the page's own fonts: fontURL says where each is.
+    if (fontURL) {
+      for (const src of new Set(page.pieces.map((p) => p.font).filter(isFontSrc))) {
+        const url = fontURL(src);
+        if (url) lines.push(`@font-face { font-family: "${fontFamily(src)}"; src: url("${url}"); font-display: swap; }`);
+      }
+    }
     for (const p of page.pieces) {
       const vars = Object.entries(pieceVars(p)).map(([k, v]) => `${k}: ${v};`).join(" ");
       lines.push(`#${p.id} { ${vars} }`);
@@ -3041,11 +3211,11 @@
       const tag = isLink ? "a" : "div";
       const href = isLink ? ` href="${esc(safeHref(p.href))}"` : "";
       const beep = beepAttr(p, preview ? libURL : undefined, preview ? (src) => attached.get(src)?.url ?? "" : undefined);
-      const glyphs = shapes?.glyphs ? GLYPHS_ID : null;
+      const glyphs = isFontSrc(p.font) && shapes?.glyphsBy?.has(p.font) ? glyphsId(shapes, p.font) : shapes?.glyphs ? GLYPHS_ID : null;
       const inner = shapes?.inners.get(p.id) ?? pieceInner(p, page.cell, preview ? { imageURL: imageURLFor(page), glyphs } : { glyphs });
       return `      <${tag} id="${esc(p.id)}" class="${esc(pieceClasses(p))}"${href}${beep}${pieceAttrs(p)}>${inner}</${tag}>`;
     }).join("\n");
-    const css = preview ? `<style>\n${pageCSS(page)}${shapes?.css ?? ""}</style>` : `<link rel="stylesheet" href="${esc(page.file || "page")}.css">`;
+    const css = preview ? `<style>\n${pageCSS(page, (src) => attached.get(src)?.url)}${shapes?.css ?? ""}</style>` : `<link rel="stylesheet" href="${esc(page.file || "page")}.css">`;
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -3065,7 +3235,7 @@
   <script src="${lib("lcars/trek-padd.js")}"></script>${preview ? PREVIEW_LINKS : ""}
 </head>
 <body class="lcars-body">
-  ${shapes?.defs ?? ""}${shapes?.glyphs ? glyphScript(shapes.glyphs) : ""}
+  ${shapes?.defs ?? ""}${shapes?.glyphs ? glyphScript(shapes.glyphs) : ""}${[...(shapes?.glyphsBy || [])].map(([src, set]) => glyphScript(set, glyphsId(shapes, src))).join("")}
   <main class="lcars-screen">
     <div class="lcars-board"${flowAttrs(page, preview ? (src) => attached.get(src)?.url ?? src : undefined)}>
 ${pieces}
@@ -3091,12 +3261,14 @@ ${pieces}
 
   /** The PADDs' letter shapes, read by <trek-padd glyphs="..."> (see trek-padd.js). */
   const GLYPHS_ID = "lcars-glyphs";
-  const glyphScript = (set) =>
-    `\n  <script type="application/json" id="${GLYPHS_ID}">${JSON.stringify(set).replace(/</g, "\\u003c")}</script>`;
+  const glyphScript = (set, id = GLYPHS_ID) =>
+    `\n  <script type="application/json" id="${id}">${JSON.stringify(set).replace(/</g, "\\u003c")}</script>`;
+  /** The id of the letter set for PADDs in a font of the project's own. */
+  const glyphsId = (shapes, src) => `${GLYPHS_ID}-${[...shapes.glyphsBy.keys()].indexOf(src) + 1}`;
 
   /** Every letter a PADD can show: its text, plus the stardate, page count and buttons. */
-  function paddText(page = doc) {
-    const padds = page.pieces.filter((p) => p.type === "padd");
+  function paddText(page = doc, font = "") {
+    const padds = page.pieces.filter((p) => p.type === "padd" && (isFontSrc(p.font) ? p.font : "") === font);
     if (!padds.length) return "";
     const text = padds.map((p) => stripCodes(p.text)).join("") + "STARDATE 0123456789. PAGE / Back Audio Next Restart";
     return text + text.toUpperCase();
@@ -3139,12 +3311,18 @@ ${pieces}
     }
     const scale = 4; // measure at four times the design size, so pixel rounding is negligible
     try {
+      // Pieces in a font of the project's own are measured and drawn in it.
+      const srcs = [...new Set(page.pieces.map((p) => p.font).filter((src) => isFontSrc(src) && attached.has(src)))];
+      const fonts = await Promise.all(srcs.map(async (key) => ({ key, buffer: await attached.get(key).file.arrayBuffer() })));
       const shapes = await lcarsOutline.outline({
         html: pageHTML({ preview: true, page }),
         width: page.cols * page.cell * scale,
         height: page.rows * page.cell * scale,
         skip: new Set(page.pieces.filter((p) => p.type === "padd").map((p) => p.id)),
         glyphText: paddText(page),
+        fonts,
+        pieceFonts: new Map(page.pieces.filter((p) => srcs.includes(p.font)).map((p) => [p.id, p.font])),
+        glyphTexts: new Map(srcs.map((src) => [src, paddText(page, src)])),
       });
       // The frame showed attached pictures from memory; the export points at images/.
       if (!forPreview) {
@@ -3165,10 +3343,12 @@ ${pieces}
   /** Every file of the exported site: pages, their stylesheets, the shared files, pictures and site.json. */
   async function siteFiles({ clock = "" } = {}) {
     const files = {};
+    const liveFonts = new Set(); // fonts of pages whose text stays live: those go with the site
     for (const page of site.pages) {
       const shapes = await textShapes({ page });
       files[`${page.file}.html`] = pageHTML({ shapes, page, clock });
-      files[`${page.file}.css`] = pageCSS(page) + (shapes?.css ?? "");
+      files[`${page.file}.css`] = pageCSS(page, shapes ? null : (src) => src) + (shapes?.css ?? "");
+      if (!shapes) for (const p of page.pieces) if (isFontSrc(p.font)) liveFonts.add(p.font);
     }
     files["site.json"] = JSON.stringify(site, null, 2);
     try {
@@ -3189,7 +3369,7 @@ ${pieces}
       console.error(err);
       return null;
     }
-    for (const src of usedFiles()) files[src] = attached.get(src).file;
+    for (const src of usedFiles()) if (!isFontSrc(src) || liveFonts.has(src)) files[src] = attached.get(src).file;
     return files;
   }
 
@@ -3452,7 +3632,8 @@ ${pieces}
   const PROJECT_FORMAT = "lcars-builder-project"; // from before POLARIS had its name; .lcars files carry it
   const IMAGE_TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", avif: "image/avif" };
   const SOUND_TYPES = { mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4", flac: "audio/flac" };
-  const typeOf = (name) => { const ext = name.split(".").pop().toLowerCase(); return IMAGE_TYPES[ext] || SOUND_TYPES[ext] || ""; };
+  const FONT_TYPES = { otf: "font/otf", ttf: "font/ttf", woff: "font/woff" };
+  const typeOf = (name) => { const ext = name.split(".").pop().toLowerCase(); return IMAGE_TYPES[ext] || SOUND_TYPES[ext] || FONT_TYPES[ext] || ""; };
   /**
    * Keep a chosen file as src (once), typed by its name. A file from the
    * system's file dialog can come with no type (Windows doesn't always know
@@ -3463,6 +3644,7 @@ ${pieces}
     const type = typeOf(file.name) || file.type;
     if (type && file.type !== type) file = new File([file], file.name, { type, lastModified: file.lastModified });
     attached.set(src, { file, url: URL.createObjectURL(file) });
+    if (isFontSrc(src)) registerFont(fontFamily(src), file).then(() => renderAll());
   }
 
   /** The files (images/name, sounds/name) the site uses and the builder has: pictures, and openings' sounds. */
@@ -3472,6 +3654,7 @@ ${pieces}
       for (const p of page.pieces) {
         if (p.src) used.add(p.src);
         if (p.type === "button" && isSoundSrc(p.beep)) used.add(p.beep);
+        if (isFontSrc(p.font)) used.add(p.font);
       }
       if (page.soundFile) used.add(page.soundFile);
       for (const c of Object.values(page.steps || {})) if (c.sound) used.add(c.sound);
@@ -3505,9 +3688,9 @@ ${pieces}
 
   /** The project as a .lcars file: the site, plus the pictures and sounds its pages use. */
   async function projectText() {
-    const images = {}, sounds = {};
-    for (const src of usedFiles()) (src.startsWith("sounds/") ? sounds : images)[src] = await blobBase64(attached.get(src).file);
-    return JSON.stringify({ format: PROJECT_FORMAT, version: 1, site, images, sounds });
+    const images = {}, sounds = {}, fonts = {};
+    for (const src of usedFiles()) (src.startsWith("sounds/") ? sounds : src.startsWith("fonts/") ? fonts : images)[src] = await blobBase64(attached.get(src).file);
+    return JSON.stringify({ format: PROJECT_FORMAT, version: 1, site, images, sounds, fonts });
   }
 
   /** A file from its base64, as a project file carries it. */
@@ -3520,14 +3703,15 @@ ${pieces}
   }
 
   /** Pictures and sounds from a project file (replacing any from the last project). */
-  function attachImages(images = {}, sounds = {}) {
+  function attachImages(images = {}, sounds = {}, fonts = {}) {
     for (const { url } of attached.values()) URL.revokeObjectURL(url);
     attached.clear();
-    for (const [src, b64] of [...Object.entries(images || {}), ...Object.entries(sounds || {})]) {
-      if (typeof b64 !== "string" || !/^(images|sounds)\//.test(src)) continue;
+    for (const [src, b64] of [...Object.entries(images || {}), ...Object.entries(sounds || {}), ...Object.entries(fonts || {})]) {
+      if (typeof b64 !== "string" || !/^(images|sounds)\//.test(src) && !isFontSrc(src)) continue;
       try {
         const file = fromBase64(src, b64);
         attached.set(src, { file, url: URL.createObjectURL(file) });
+        if (isFontSrc(src)) registerFont(fontFamily(src), file).then(() => renderAll());
       } catch { /* not base64: left out */ }
     }
   }
@@ -3603,6 +3787,9 @@ ${pieces}
       startImages = d.images || {};
       startSounds = new Map(Object.entries(d.sounds || {}).filter(([src, b64]) => isSoundSrc(src) && typeof b64 === "string")
         .map(([src, b64]) => [src, URL.createObjectURL(fromBase64(src, b64))]));
+      for (const [src, b64] of Object.entries(d.fonts || {})) {
+        if (isFontSrc(src) && typeof b64 === "string") await registerFont(fontFamily(src), fromBase64(src, b64));
+      }
     })()
       .catch(() => { /* no design (or a broken one): the last one, or the written-in start screen, stays */ })
       .finally(() => { startLoading = null; });
@@ -3813,7 +4000,7 @@ ${pieces}
         if (!opened || opened.elsewhere) return; // not confirmed, or open in another window: the pages are here, without their pictures
         const d = JSON.parse(opened.text);
         if (d.format === PROJECT_FORMAT) {
-          attachImages(d.images, d.sounds);
+          attachImages(d.images, d.sounds, d.fonts);
           renderAll();
         }
       } catch { /* the file moved: the pages are still here, without pictures picked from disk */ }
@@ -3956,7 +4143,7 @@ ${pieces}
         const s = project ? d.site : Array.isArray(d.pages) ? d : { pages: [Object.assign(d, { file: "index" })] };
         loadSite(s);
         if (!site.name) site.name = name.replace(/\.(lcars|json)$/i, "").replace(/^site$/i, "");
-        attachImages(project ? d.images : {}, project ? d.sounds : {});
+        attachImages(project ? d.images : {}, project ? d.sounds : {}, project ? d.fonts : {});
         renderAll();
         commit();
         // Files from before projects get saved as a project (.lcars) next time, so they aren't overwritten.
@@ -4141,7 +4328,7 @@ ${pieces}
   });
 
   const COMMANDS = {
-    prefs: () => { renderPrefs(); renderSounds(); prefsDialog.showModal(); },
+    prefs: () => { renderPrefs(); renderSounds(); renderFonts(); prefsDialog.showModal(); },
     new: newProject,
     close: async () => {
       if (unsaved() && !(await ask(`Close ${site.name || "this project"}? Its changes aren't saved to a file yet; you can still resume it from the start screen.`))) return;
@@ -4551,7 +4738,7 @@ ${pieces}
   document.fonts?.ready.then(refit);
 
   window.lcarsBuilder = {
-    get doc() { return doc; }, get site() { return site; }, get unsaved() { return unsaved(); }, pageHTML, pageCSS, load, loadSite, select, flip, switchPage, previewPage,
+    get doc() { return doc; }, get site() { return site; }, get unsaved() { return unsaved(); }, pageHTML, pageCSS, siteFiles, load, loadSite, select, flip, switchPage, previewPage,
     startEdit: (id) => startEdit(piece(id)),
     colorText, parseLabel, serialize,
   };

@@ -124,9 +124,13 @@
    *   skip    ids of pieces to leave as live text
    *   glyphText  text that the page lays out itself (PADDs): its letters'
    *              shapes are returned as a set for <trek-padd glyphs="...">
-   * Returns { inners: Map(piece id -> outlined .body HTML), defs, css, missing, glyphs }.
+   *   fonts   other fonts the page uses: [{ key, buffer }] (the chosen font is the default)
+   *   pieceFonts  Map(piece id -> a font's key), for pieces in another font
+   *   glyphTexts  Map(font key -> PADD text in that font), for their letter sets
+   * Returns { inners: Map(piece id -> outlined .body HTML), defs, css, missing, glyphs,
+   * glyphsBy: Map(font key -> letter set) }.
    */
-  async function outline({ html, width, height, skip = new Set(), glyphText = "" }) {
+  async function outline({ html, width, height, skip = new Set(), glyphText = "", fonts = [], pieceFonts = new Map(), glyphTexts = new Map() }) {
     if (!cached) throw new Error("No font loaded");
     const frame = document.createElement("iframe");
     frame.setAttribute("aria-hidden", "true");
@@ -142,40 +146,52 @@
     document.body.append(frame);
     try {
       await loaded;
-      return await measure(frame, skip, glyphText);
+      return await measure(frame, skip, glyphText, fonts, pieceFonts, glyphTexts);
     } finally {
       frame.remove();
     }
   }
 
-  async function measure(frame, skip, glyphText) {
-    const { font, buffer } = cached;
+  async function measure(frame, skip, glyphText, fonts, pieceFonts, glyphTexts) {
     const win = frame.contentWindow;
     const d = frame.contentDocument;
+    const glyphs = new Map(); // glyph id ("" or f<n>- then the glyph's index) -> path data
+    const missing = new Set();
 
-    // Measure with exactly the font file being outlined, whatever the CSS asks for.
-    const face = new win.FontFace(FAMILY, buffer.slice(0));
-    await face.load();
-    d.fonts.add(face);
+    // Measure with exactly the font files being outlined, whatever the CSS asks for: the chosen
+    // font for every piece, and another font for the pieces set in it. Each font's letter shapes
+    // get ids of their own (the chosen font's keep plain numbers, as they always had).
+    const all = [{ key: "", font: cached.font, buffer: cached.buffer }, ...fonts.map((f) => ({ ...f, font: f.font || window.opentype.parse(f.buffer) }))];
+    const ctxs = new Map();
+    let rules = "";
+    for (const [n, f] of all.entries()) {
+      const family = n ? `${FAMILY} ${n}` : FAMILY;
+      const face = new win.FontFace(family, f.buffer.slice(0));
+      await face.load();
+      d.fonts.add(face);
+      ctxs.set(f.key, { d, win, font: f.font, upm: f.font.unitsPerEm, family, prefix: n ? `f${n}-` : "", glyphs, missing, metrics: new Map() });
+      if (n) {
+        for (const [id, key] of pieceFonts) {
+          if (key === f.key) rules += `#${win.CSS.escape(id)}, #${win.CSS.escape(id)} * { font-family: "${family}" !important; }\n`;
+        }
+      }
+    }
     const style = d.createElement("style");
     style.textContent = `
       .lcars-board, .lcars-board * { font-family: "${FAMILY}" !important; }
+      ${rules}
       .piece { --rot: 0 !important; }
       .g-num > span { rotate: none !important; translate: none !important; }
       *, *::before, *::after { animation: none !important; transition: none !important; }`;
     d.head.append(style);
     await d.fonts.ready;
 
-    const upm = font.unitsPerEm;
-    const glyphs = new Map(); // glyph index -> path data
-    const missing = new Set();
     const inners = new Map();
-    const ctx = { d, win, font, upm, glyphs, missing, metrics: new Map() };
-
     for (const el of d.querySelectorAll(".lcars-board > .piece")) {
       if (skip.has(el.id)) continue;
       const body = el.querySelector(":scope > .body");
       if (!body) continue;
+      const ctx = ctxs.get(pieceFonts.get(el.id) ?? "") || ctxs.get("");
       outlineRoot(body, ctx, { speak: !el.classList.contains("p-cascade") });
       if (el.classList.contains("p-cascade")) body.setAttribute("aria-hidden", "true");
       inners.set(el.id, body.outerHTML);
@@ -183,8 +199,10 @@
 
     const paths = [...glyphs].map(([i, dPath]) => `<path id="tg${i}" d="${dPath}"/>`).join("");
     const defs = `<svg class="tx-defs" aria-hidden="true" width="0" height="0" style="position:absolute"><defs>${paths}</defs></svg>`;
-    const glyphSet = glyphText ? letterSet(glyphText, ctx) : null;
-    return { inners, defs, css: CSS, missing, glyphs: glyphSet };
+    const glyphSet = glyphText ? letterSet(glyphText, ctxs.get("")) : null;
+    const glyphsBy = new Map();
+    for (const [key, text] of glyphTexts) if (text && ctxs.has(key)) glyphsBy.set(key, letterSet(text, ctxs.get(key)));
+    return { inners, defs, css: CSS, missing, glyphs: glyphSet, glyphsBy };
   }
 
   /**
@@ -231,7 +249,7 @@
     if (ctx.metrics.has(key)) return ctx.metrics.get(key);
     const { d } = ctx;
     const probe = d.createElement("div");
-    probe.style.cssText = `position:absolute;left:0;top:0;font-family:"${FAMILY}";font-size:${fs}px;` +
+    probe.style.cssText = `position:absolute;left:0;top:0;font-family:"${ctx.family}";font-size:${fs}px;` +
       `line-height:${L}px;white-space:pre;letter-spacing:0`;
     probe.innerHTML = 'H<i style="display:inline-block;width:0;height:0"></i>';
     d.body.append(probe);
@@ -420,7 +438,7 @@
 
   /** One line's worth of characters from one text node, as SVGs (and live text for missing letters). */
   function runNodes(run, ctx) {
-    const { d, font, upm, glyphs, missing } = ctx;
+    const { d, font, upm, glyphs, missing, prefix } = ctx;
     const out = [];
     let seg = [];
     const tpl = d.createElement("template");
@@ -437,8 +455,9 @@
         if (c.space) continue;
         let x = (c.left - first.left) * s;
         for (const g of font.stringToGlyphs(c.upper ? c.ch.toUpperCase() : c.ch)) {
-          if (!glyphs.has(g.index)) glyphs.set(g.index, g.getPath(0, 0, upm).toPathData(1));
-          uses += `<use href="#tg${g.index}" x="${round(x, 1)}" y="${round(base, 1)}"/>`;
+          const id = `${prefix}${g.index}`;
+          if (!glyphs.has(id)) glyphs.set(id, g.getPath(0, 0, upm).toPathData(1));
+          uses += `<use href="#tg${id}" x="${round(x, 1)}" y="${round(base, 1)}"/>`;
           x += (g.advanceWidth || 0) + c.spacing * s;
         }
       }
@@ -469,5 +488,16 @@
     return out;
   }
 
-  window.lcarsOutline = { getFont, chooseFont, forget, outline, get font() { return cached; }, esc };
+  /** A font file's own name (its family), or null if it isn't a font this tool can read. */
+  function fontName(buffer) {
+    try {
+      const font = window.opentype.parse(buffer);
+      if (!font.supported || !font.numGlyphs) return null;
+      return font.names.fontFamily?.en || font.names.fullName?.en || null;
+    } catch {
+      return null;
+    }
+  }
+
+  window.lcarsOutline = { getFont, chooseFont, forget, outline, fontName, get font() { return cached; }, esc };
 })();
