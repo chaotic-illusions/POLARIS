@@ -65,8 +65,16 @@
         <span class="fill"></span>
         <button class="pill blue" value="done">Done</button>
       </header>
+      <nav class="prefs-tabs" role="tablist" aria-label="Preferences">
+        <button type="button" class="pill" role="tab" data-tab="board" aria-selected="false" aria-controls="prefs-tab-board" tabindex="-1">Board</button>
+        <button type="button" class="pill" role="tab" data-tab="colors" aria-selected="true" aria-controls="prefs-tab-colors">Colors</button>
+        <button type="button" class="pill" role="tab" data-tab="sounds" aria-selected="false" aria-controls="prefs-tab-sounds" tabindex="-1">Sounds</button>
+      </nav>
+      <section id="prefs-tab-board" role="tabpanel" hidden>
       <h2>Board</h2>
       <label class="toggle"><input type="checkbox" id="grid-toggle" checked> Show the grid while editing</label>
+      </section>
+      <section id="prefs-tab-colors" role="tabpanel">
       <h2>Colors in the pickers</h2>
       <p class="note">Tick the colors you want offered when choosing piece and letter colors, or start from a color set.
         Your picks are outlined. Any LCARS color can still be used by name in text, as ##{name}.</p>
@@ -83,6 +91,17 @@
         <span id="prefs-count"></span>
       </div>
       <div id="prefs-colors"></div>
+      </section>
+      <section id="prefs-tab-sounds" role="tabpanel" hidden>
+      <h2>Button sounds</h2>
+      <p class="note">These are the sounds a button can make when clicked (its panel, under Action); choosing one there plays it.
+        Yours are kept in POLARIS. A button using one carries the file in its project, so published sites have it too.</p>
+      <div id="prefs-sounds"></div>
+      <div class="prefs-actions">
+        <button type="button" class="pill orange" id="prefs-add-sound">Add sound</button>
+        <input type="file" id="prefs-sound-file" accept="audio/*,.mp3,.wav,.ogg,.m4a" multiple hidden>
+      </div>
+      </section>
     </form>
   </dialog>
 

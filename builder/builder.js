@@ -808,6 +808,7 @@
     for (const key of CLASS_KEYS) if (key in p && !choices[key]) delete p[key];
     for (const [key, value] of Object.entries(p)) {
       if (key === "id" || key === "type") continue;
+      if (key === "beep" && isSoundSrc(value)) continue; // a sound file of the project's own
       const fallback = defaults[key];
       if (choices[key]) {
         if (!choices[key].includes(value)) {
@@ -2499,9 +2500,18 @@
     if (Array.isArray(kind)) {
       input = document.createElement("select");
       for (const v of kind) input.add(new Option(OPTION_NAMES[key]?.[v] ?? v, v));
+      if (key === "beep") beepChoices(input, target[key]);
       input.value = target[key] ?? kind[0];
       const numbers = kind.every((v) => typeof v === "number");
-      input.addEventListener("change", () => update(numbers ? Number(input.value) : input.value, true));
+      input.addEventListener("change", async () => {
+        if (key !== "beep") return update(numbers ? Number(input.value) : input.value, true);
+        // A sound of yours comes into the project, so the button (and the published page) keeps it.
+        const v = await beepFromLibrary(input.value);
+        if (!v) return;
+        update(v, true);
+        playBeep(v);
+        if (v !== input.value) renderInspector(); // it's one of the project's sounds now
+      });
     } else {
       input = document.createElement("input");
       const isText = kind === "text" || kind === "link";
@@ -2536,6 +2546,119 @@
     wrap.append(input);
     return wrap;
   }
+
+  /* ---- your sounds: button sounds kept in POLARIS (Preferences, Sounds) ---- */
+
+  const SOUNDS_KEY = "polaris:sounds";
+  const SOUND_MAX = 1024 * 1024; // click sounds are short; this keeps the store small
+  /** Your sounds: [{ id, name, file, data (base64) }]. */
+  function mySounds() {
+    try {
+      const list = JSON.parse(localStorage.getItem(SOUNDS_KEY));
+      return Array.isArray(list) ? list.filter((s) => s && [s.id, s.name, s.file, s.data].every((v) => typeof v === "string")) : [];
+    } catch {
+      return [];
+    }
+  }
+  function keepMySounds(list) {
+    try {
+      localStorage.setItem(SOUNDS_KEY, JSON.stringify(list));
+      return true;
+    } catch {
+      toast("There isn't room to keep that sound. Remove one of yours, or use a shorter file.");
+      return false;
+    }
+  }
+  const mySoundURLs = new Map(); // id -> object URL, for playing it
+  const mySoundFile = (s) => fromBase64(`sounds/${s.file}`, s.data);
+  const mySoundURL = (s) => {
+    if (!mySoundURLs.has(s.id)) mySoundURLs.set(s.id, URL.createObjectURL(mySoundFile(s)));
+    return mySoundURLs.get(s.id);
+  };
+
+  /** A button's Sound list gets your sounds and the project's sound files after the built-in ones. */
+  function beepChoices(select, current) {
+    const group = (label, items) => {
+      if (!items.length) return;
+      const g = document.createElement("optgroup");
+      g.label = label;
+      for (const [value, text] of items) g.append(new Option(text, value));
+      select.append(g);
+    };
+    const inProject = [...attached.keys()].filter(isSoundSrc);
+    group("Your sounds", mySounds().map((s) => [`mine:${s.id}`, s.name]));
+    group("In this project", inProject.map((src) => [src, src.slice("sounds/".length)]));
+    if (isSoundSrc(current) && !inProject.includes(current)) group("Missing", [[current, `${current.slice("sounds/".length)} (not in the project)`]]);
+  }
+  /** A choice from the Sound list as the button keeps it: one of your sounds becomes a sound file of the project. */
+  async function beepFromLibrary(value) {
+    if (!value.startsWith("mine:")) return value;
+    const s = mySounds().find((x) => `mine:${x.id}` === value);
+    if (!s) return null;
+    const file = mySoundFile(s);
+    const src = await imageSrcFor(file, "sounds");
+    attach(src, file);
+    return src;
+  }
+
+  /** Preferences, Sounds: the built-in sounds and yours, each to play; add and remove yours. */
+  function renderSounds() {
+    const box = $("#prefs-sounds");
+    box.replaceChildren();
+    const row = (name, note, url, remove) => {
+      const r = document.createElement("div");
+      r.className = "prefs-sound";
+      const n = document.createElement("span");
+      n.className = "nm";
+      n.textContent = name;
+      const s = document.createElement("small");
+      s.textContent = note;
+      r.append(n, s, actionButton("Play", "blue", () => window.TrekPadd?.audition?.(url).catch(() => toast(`Could not play ${name}`))));
+      r.append(remove ? actionButton("Remove", "rose", remove) : document.createElement("span")); // the Play buttons line up
+      return r;
+    };
+    const head = (text) => {
+      const h = document.createElement("h3");
+      h.textContent = text;
+      return h;
+    };
+    box.append(head("Built in"));
+    for (const k of ["key", "tap", "chirp", "padd"]) box.append(row(OPTION_NAMES.beep[k], k === "padd" ? "trek-padd.js" : BEEPS[k].split("/").pop(), k === "padd" ? "" : libURL(BEEPS[k])));
+    const mine = mySounds();
+    box.append(head("Yours"));
+    if (!mine.length) {
+      const p = document.createElement("p");
+      p.className = "note";
+      p.textContent = "None yet. Add sound files (MP3, WAV, OGG or M4A, up to 1 MB each).";
+      box.append(p);
+    }
+    for (const s of mine) {
+      box.append(row(s.name, s.file, mySoundURL(s), () => {
+        keepMySounds(mySounds().filter((x) => x.id !== s.id));
+        URL.revokeObjectURL(mySoundURLs.get(s.id));
+        mySoundURLs.delete(s.id);
+        renderSounds();
+        renderInspector(); // the Sound lists drop it (buttons using it keep their copy)
+      }));
+    }
+  }
+  $("#prefs-add-sound").addEventListener("click", () => $("#prefs-sound-file").click());
+  $("#prefs-sound-file").addEventListener("change", async (e) => {
+    const list = mySounds();
+    for (const file of e.target.files) {
+      if (file.size > SOUND_MAX) {
+        toast(`${file.name} is over 1 MB: button sounds should be short`);
+        continue;
+      }
+      const dot = file.name.lastIndexOf(".");
+      list.push({ id: Math.random().toString(36).slice(2, 10), name: dot > 0 ? file.name.slice(0, dot) : file.name, file: file.name, data: await blobBase64(file) });
+    }
+    e.target.value = "";
+    if (keepMySounds(list)) {
+      renderSounds();
+      renderInspector();
+    }
+  });
 
   /** A row of color swatches. With mark, the ring moves to a picked swatch (for fields whose panel isn't rebuilt). */
   function swatches(current, allowAuto, onPick, { autoTitle, mark } = {}) {
@@ -2828,10 +2951,20 @@
    */
   const BEEPS = { key: "lcars/sounds/press-key2.mp3", tap: "lcars/sounds/press-tap.mp3", chirp: "lcars/sounds/press-chirp.mp3", padd: "" };
   /** A button's sound, as an attribute; url turns lcars/... into where the page finds it. */
-  const beepAttr = (p, url = (path) => path) => {
-    if (p.type !== "button" || !(p.beep in BEEPS)) return "";
+  const beepAttr = (p, url = (path) => path, soundURL = (src) => src) => {
+    if (p.type !== "button") return "";
+    if (isSoundSrc(p.beep)) {
+      const u = soundURL(p.beep);
+      return u ? ` data-beep="${esc(u)}"` : "";
+    }
+    if (!(p.beep in BEEPS)) return "";
     return BEEPS[p.beep] ? ` data-beep="${esc(url(BEEPS[p.beep]))}"` : " data-beep";
   };
+  /** Play a button sound (a built-in name, or a project's sounds/ file), as a click would: for choosing one by ear. */
+  function playBeep(v) {
+    const url = v === "padd" ? "" : BEEPS[v] ? libURL(BEEPS[v]) : isSoundSrc(v) ? attached.get(v)?.url : null;
+    if (url != null) window.TrekPadd?.audition?.(url).catch(() => {});
+  }
   /** A runtime file (lcars/...) as the builder itself loads it: for previews and the start screen. */
   const libURL = (path) => new URL(LIB_FILES[path], location.href).href;
 
@@ -2845,7 +2978,7 @@
       const isLink = p.type === "button" && !p.opens && safeHref(p.href);
       const tag = isLink ? "a" : "div";
       const href = isLink ? ` href="${esc(safeHref(p.href))}"` : "";
-      const beep = beepAttr(p, preview ? libURL : undefined);
+      const beep = beepAttr(p, preview ? libURL : undefined, preview ? (src) => attached.get(src)?.url ?? "" : undefined);
       const glyphs = shapes?.glyphs ? GLYPHS_ID : null;
       const inner = shapes?.inners.get(p.id) ?? pieceInner(p, page.cell, preview ? { imageURL: imageURLFor(page), glyphs } : { glyphs });
       return `      <${tag} id="${esc(p.id)}" class="${esc(pieceClasses(p))}"${href}${beep}${pieceAttrs(p)}>${inner}</${tag}>`;
@@ -3267,7 +3400,10 @@ ${pieces}
   function usedFiles() {
     const used = new Set();
     for (const page of site.pages) {
-      for (const p of page.pieces) if (p.src) used.add(p.src);
+      for (const p of page.pieces) {
+        if (p.src) used.add(p.src);
+        if (p.type === "button" && isSoundSrc(p.beep)) used.add(p.beep);
+      }
       if (page.soundFile) used.add(page.soundFile);
       for (const c of Object.values(page.steps || {})) if (c.sound) used.add(c.sound);
       for (const l of page.layers || []) used.add(l.sound);
@@ -3437,7 +3573,7 @@ ${pieces}
       const link = p.type === "button" && !p.opens && safeHref(p.href);
       const tag = link ? "a" : "div";
       const style = Object.entries(pieceVars(p)).map(([k, v]) => `${k}:${v}`).join(";");
-      return `<${tag} class="${esc(pieceClasses(p))}"${link ? ` href="${esc(link)}"` : ""}${beepAttr(p, libURL)}${pieceAttrs(p)} ` +
+      return `<${tag} class="${esc(pieceClasses(p))}"${link ? ` href="${esc(link)}"` : ""}${beepAttr(p, libURL, (src) => startSounds.get(src) ?? "")}${pieceAttrs(p)} ` +
         `style="${esc(style)}">${pieceInner(p, page.cell, { imageURL })}</${tag}>`;
     }).join("");
 
@@ -3916,9 +4052,27 @@ ${pieces}
     },
   };
   for (const b of document.querySelectorAll("[data-prefs]")) b.addEventListener("click", () => PREFS_ACTIONS[b.dataset.prefs]());
+  // Preferences' tabs: one page of settings at a time.
+  function showPrefsTab(name) {
+    for (const t of document.querySelectorAll(".prefs-tabs [data-tab]")) {
+      const on = t.dataset.tab === name;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      $(`#prefs-tab-${t.dataset.tab}`).hidden = !on;
+    }
+  }
+  for (const t of document.querySelectorAll(".prefs-tabs [data-tab]")) t.addEventListener("click", () => showPrefsTab(t.dataset.tab));
+  $(".prefs-tabs").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const tabs = [...document.querySelectorAll(".prefs-tabs [data-tab]")];
+    const i = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+    const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    showPrefsTab(next.dataset.tab);
+    next.focus();
+  });
 
   const COMMANDS = {
-    prefs: () => { renderPrefs(); prefsDialog.showModal(); },
+    prefs: () => { renderPrefs(); renderSounds(); prefsDialog.showModal(); },
     new: newProject,
     close: async () => {
       if (unsaved() && !(await ask(`Close ${site.name || "this project"}? Its changes aren't saved to a file yet; you can still resume it from the start screen.`))) return;

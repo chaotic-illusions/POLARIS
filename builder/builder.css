@@ -320,6 +320,14 @@ input, textarea, select, option, button { text-transform: uppercase; letter-spac
   background: #0b0b12; color: #ddd; font: inherit; text-transform: uppercase; letter-spacing: 0;
 }
 .prefs-actions .pill:disabled { opacity: 0.35; cursor: default; }
+.prefs-tabs { display: flex; gap: 6px; margin: 12px 0 2px; }
+.prefs-tabs .pill { font-size: 16px; padding: 0.3em 1.3em; background: var(--orange); }
+.prefs-tabs .pill[aria-selected="false"] { background: #333; color: var(--peach); }
+.prefs-sound { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #1c1c1c; }
+.prefs-sound .nm { color: var(--peach); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prefs-sound small { color: #777; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prefs-sound .pill { font-size: 13px; padding: 0.25em 0.9em; }
+#prefs-sounds h3 { margin: 14px 0 4px; font-size: 16px; font-weight: 400; color: var(--peach); letter-spacing: 0.06em; }
 .prefs-group h3 { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: 16px; font-weight: 400; color: var(--peach); letter-spacing: 0.06em; }
 .prefs-group h3 small { color: #777; font-size: 13px; }
 .prefs-group h3 .pill { margin-left: auto; font-size: 12px; padding: 0.2em 0.9em; }
