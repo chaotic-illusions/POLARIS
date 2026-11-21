@@ -69,7 +69,7 @@
   const LABELLED = { label: "", tcolor: "", fs: 17, halign: "center", valign: "middle", fit: false };
   const TYPES = {
     block: { w: 20, h: 4, color: "blue-bell", ends: "none", ...LABELLED, halign: "right", valign: "bottom" },
-    button: { w: 11, h: 4, color: "atomic-tangerine", ends: "both", ...LABELLED, label: "000-000", href: "", hover: "", active: "", beep: "key" },
+    button: { w: 11, h: 4, color: "atomic-tangerine", ends: "both", ...LABELLED, label: "000-000", href: "", hover: "", active: "", beep: "none" },
     elbow: { w: 38, h: 16, color: "chestnut-rose", corner: "tl", side: 25, bar: 4, rx: 11, ry: 8, ri: 4, ...LABELLED, halign: "right", valign: "bottom" },
     text: { w: 12, h: 4, ...LABELLED, tcolor: "atomic-tangerine", label: "Title", fs: 22, halign: "left", fit: true, wrap: false },
     padd: { w: 60, h: 30, fs: 24, hold: 16, tcolor: "", text: "##{melrose}INCOMING TRANSMISSION\n\n##{tanoi}TYPE YOUR TEXT IN THE PROPERTIES PANEL." },
@@ -2598,16 +2598,12 @@
   const stem = (file) => file.replace(/\.[^.]+$/, "");
 
   /**
-   * Every sound, by name: the built-in ones and yours. Each: { name, note, url,
-   * value (what a button's Sound keeps), mine (yours, so it can be removed) }.
+   * Every sound you've added, by name. POLARIS ships no sounds of its own for
+   * pages (only the start screen's): you bring yours. Each: { name, note, url,
+   * value (what a button's Sound keeps), mine }.
    */
   function allSounds() {
-    const builtIn = ["key", "tap", "chirp", "padd"].map((k) => ({
-      name: OPTION_NAMES.beep[k], note: k === "padd" ? "built in (trek-padd.js)" : `built in (${BEEPS[k].split("/").pop()})`,
-      url: k === "padd" ? "" : libURL(BEEPS[k]), value: k,
-    }));
-    const mine = soundLib.list.map((s) => ({ name: s.name, note: s.file, url: mySoundURL(s), value: `mine:${s.id}`, mine: s }));
-    return [...builtIn, ...mine].sort(byName);
+    return soundLib.list.map((s) => ({ name: s.name, note: s.file, url: mySoundURL(s), value: `mine:${s.id}`, mine: s }));
   }
 
   /**
@@ -2624,6 +2620,8 @@
     ].sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: "base", numeric: true }));
     for (const [value, text] of items) select.add(new Option(text, value));
     if (isSoundSrc(current) && !inProject.includes(current)) select.add(new Option(`${stem(current.slice("sounds/".length))} (not in the project)`, current));
+    // A button from before POLARIS stopped offering its own sounds keeps the one it has (no longer offered otherwise).
+    if (current in BEEPS) select.add(new Option(OPTION_NAMES.beep[current], current));
   }
   /** A choice from the Sound list as the button keeps it: one of your sounds becomes a sound file of the project. */
   async function beepFromLibrary(value) {
@@ -2636,10 +2634,16 @@
     return src;
   }
 
-  /** Preferences, Sounds: every sound, by name, a tile each; click one to hear it. Yours can be removed. */
+  /** Preferences, Sounds: every sound you've added, by name, a tile each; click one to hear it. */
   function renderSounds() {
     const box = $("#prefs-sounds");
     box.replaceChildren();
+    if (!soundLib.list.length) {
+      const p = document.createElement("p");
+      p.className = "note";
+      p.textContent = "No sounds yet: Add sound brings in sound effects and voice clips of your own.";
+      box.append(p);
+    }
     for (const s of allSounds()) {
       const r = document.createElement("div");
       r.className = "prefs-sound";
@@ -2654,8 +2658,8 @@
         window.TrekPadd?.audition?.(s.url).catch(() => toast(`Could not play ${s.name}`));
       });
       r.append(play);
-      // Yours can be removed (buttons using it keep their copy); the built-in ones come with POLARIS.
-      if (s.mine) r.append(actionButton("Remove", "rose", async () => {
+      // Removing one leaves the buttons using it their copy.
+      r.append(actionButton("Remove", "rose", async () => {
         await soundStore("readwrite", (st) => st.delete(s.mine.id)).catch(() => {});
         soundLib.list = soundLib.list.filter((x) => x.id !== s.mine.id);
         URL.revokeObjectURL(mySoundURLs.get(s.mine.id));
@@ -3139,7 +3143,14 @@ ${pieces}
     }
     files["site.json"] = JSON.stringify(site, null, 2);
     try {
+      // POLARIS's own sounds go only with a page that uses them (the start screen's power-up, or a button from before).
+      const libSounds = new Set();
+      for (const page of site.pages) {
+        if (playsPowerUp(page)) for (const [dest] of Object.entries(LIB_FILES)) if (dest.startsWith("lcars/sounds/")) libSounds.add(dest);
+        for (const p of page.pieces) if (p.type === "button" && BEEPS[p.beep]) libSounds.add(BEEPS[p.beep]);
+      }
       for (const [dest, src] of Object.entries(LIB_FILES)) {
+        if (dest.startsWith("lcars/sounds/") && !libSounds.has(dest)) continue;
         const res = await fetch(src);
         if (!res.ok) throw new Error(`${src}: ${res.status}`);
         files[dest] = /\.(mp3|wav|ogg)$/i.test(dest) ? await res.blob() : await res.text();
