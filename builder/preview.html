@@ -1,7 +1,8 @@
 <!doctype html>
 <!--
   POLARIS Preview: the page in a frame, with play, pause, stop and a scrubber
-  under it. Never published. The page gets builder/preview-clock.js, which puts
+  under it, and under those the opening's tracks: its parts (frame, content,
+  steps) and its sounds, on one time scale. Never published. The page gets builder/preview-clock.js, which puts
   it on the clock these controls drive; the page to show is in the address's
   #fragment (a blob: URL in a browser, ../name.html in the app).
 -->
@@ -15,7 +16,7 @@
   <style>
     :root { color-scheme: dark; --bar: #000; --ink: #000; --dim: #777; }
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-    body { display: grid; grid-template-rows: minmax(0, 1fr) auto; font-family: "Helvetica Ultra Compressed", "Antonio", "Arial Narrow", sans-serif; text-transform: uppercase; color: var(--lcars-tanoi, #FFCC99); }
+    body { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; font-family: "Helvetica Ultra Compressed", "Antonio", "Arial Narrow", sans-serif; text-transform: uppercase; color: var(--lcars-tanoi, #FFCC99); }
     iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
     .transport { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--bar); border-top: 2px solid var(--lcars-atomic-tangerine, #FF9900); flex-wrap: wrap; }
     button { font: inherit; font-size: 17px; letter-spacing: 0.04em; text-transform: uppercase; border: 0; border-radius: 999px; padding: 0.3em 1em; min-height: 30px; color: var(--ink); background: var(--lcars-melrose, #9999FF); cursor: pointer; }
@@ -33,6 +34,34 @@
     .time { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 12.5em; text-align: right; color: var(--lcars-golden-tanoi, #FFCC66); }
     .time small { color: var(--dim); font-size: 15px; }
     .busy .time::after { content: " · LOADING"; color: var(--dim); }
+
+    /* Tracks: a name column, then lanes on the opening's time scale. */
+    .tracks { --name: 180px; display: grid; grid-template-columns: var(--name) minmax(0, 1fr); max-height: 38vh; overflow-y: auto; border-top: 1px solid #333; padding: 6px 12px 10px; background: #000; }
+    .tracks[hidden] { display: none; }
+    .tracks .head { position: sticky; top: 0; z-index: 3; background: #000; padding-bottom: 4px; }
+    .views { display: flex; gap: 3px; align-items: center; }
+    .views button { font-size: 13px; padding: 0.15em 0.7em; min-height: 22px; }
+    .views button[aria-pressed="false"] { background: #333; color: var(--lcars-tanoi, #FFCC99); }
+    .ruler { position: relative; height: 24px; cursor: col-resize; touch-action: none; }
+    .ruler .tick { position: absolute; bottom: 0; height: 6px; border-left: 1px solid #555; }
+    .ruler .tick span { position: absolute; bottom: 7px; left: 3px; font-size: 13px; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ruler .tick.major { height: 10px; border-color: #888; }
+    .name { font-size: 15px; letter-spacing: 0.03em; padding: 0 10px 0 0; height: 26px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--lcars-tanoi, #FFCC99); }
+    .lane { position: relative; height: 26px; border-bottom: 1px solid #1c1c1c; cursor: col-resize; touch-action: none; }
+    .name.tall, .lane.tall { height: 36px; } /* sounds: room for their shape */
+    .block { position: absolute; top: 3px; bottom: 3px; border-radius: 10px; min-width: 3px; overflow: hidden; color: #000; font-size: 13px; letter-spacing: 0.04em; display: flex; align-items: center; padding: 0 8px; box-sizing: border-box; white-space: nowrap; }
+    .block.frame { background: var(--lcars-atomic-tangerine, #FF9900); }
+    .block.content { background: var(--lcars-orange-peel, #FF9966); }
+    .block.step { background: var(--lcars-lilac, #CC99CC); }
+    .block.sound { background: #1d1d3a; border: 1px solid var(--lcars-melrose, #9999FF); padding: 0; }
+    .block.sound svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .block.sound path { fill: var(--lcars-anakiwa, #99CCFF); }
+    .block span { position: relative; overflow: hidden; text-overflow: ellipsis; }
+    .group-label { grid-column: 1 / -1; font-size: 12px; color: var(--dim); letter-spacing: 0.08em; margin: 6px 0 2px; }
+    .names { grid-column: 1; }
+    .lanes-wrap { grid-column: 2; position: relative; }
+    .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; pointer-events: none; z-index: 2; box-shadow: 0 0 6px rgb(255 255 255 / 0.6); }
+    .empty { grid-column: 1 / -1; color: var(--dim); font-size: 15px; padding: 6px 0; }
   </style>
 </head>
 <body>
@@ -59,7 +88,17 @@
     <div class="group">
       <button type="button" class="toggle" id="loop" aria-pressed="false" title="PLAY THE OPENING OVER AND OVER (L)">⟳ LOOP</button>
       <button type="button" class="small" id="shuffle" title="ANOTHER TAKE OF THE RANDOM PARTS (KEY PRESSES, GAUGES ...)">SHUFFLE</button>
+      <button type="button" class="toggle" id="show-tracks" aria-pressed="true" aria-controls="tracks" title="SHOW OR HIDE THE TRACKS (T)">TRACKS</button>
     </div>
+  </div>
+  <div class="tracks" id="tracks" aria-label="TRACKS">
+    <div class="head views" role="group" aria-label="WHICH TRACKS">
+      <button type="button" data-view="video" aria-pressed="false" title="THE OPENING&#39;S PARTS">VIDEO</button>
+      <button type="button" data-view="audio" aria-pressed="false" title="THE OPENING&#39;S SOUNDS">AUDIO</button>
+      <button type="button" data-view="both" aria-pressed="true" title="PARTS AND SOUNDS">BOTH</button>
+    </div>
+    <div class="head ruler" id="ruler" aria-hidden="true"></div>
+    <div id="track-rows" style="display: contents"></div>
   </div>
   <script>
     "use strict";
@@ -126,10 +165,11 @@
       else if (key === "ArrowLeft") stepBy(-by);
       else if (key === "ArrowRight") stepBy(by);
       else if (key === "l" || key === "L") setLoop(!state.loop);
+      else if (key === "t" || key === "T") toggleTracks();
     }
     addEventListener("keydown", (e) => {
       if (e.target.closest?.("input, select, textarea")) return;
-      if (!/^( |Home|ArrowLeft|ArrowRight|l|L)$/.test(e.key)) return;
+      if (!/^( |Home|ArrowLeft|ArrowRight|l|L|t|T)$/.test(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === " " && e.target.closest?.("button")) return; // a focused button takes its own Space
       e.preventDefault();
       onKey(e.key, e.shiftKey);
@@ -205,8 +245,152 @@
         if (s.rate !== state.rate) { state.rate = s.rate; paintSpeed(); }
         if (state.loop && s.playing && s.t > Math.max(1000, s.end) + TAIL) state.clock.seek(0);
       }
+      paintTracksNow(s);
       requestAnimationFrame(tick);
     }
+    /* ---- tracks ---- */
+
+    const tracksEl = $("#tracks"), rowsEl = $("#track-rows"), ruler = $("#ruler");
+    const VIEW_KEY = "polaris-preview:tracks";
+    const view = { show: true, which: "both" };
+    try { Object.assign(view, JSON.parse(localStorage.getItem(VIEW_KEY)) || {}); } catch { /* storage unavailable */ }
+    const keepView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch { /* storage unavailable */ } };
+    let shownTimeline, shownSpan = 0, shownWhich = "", playheads = [];
+
+    function paintView() {
+      tracksEl.hidden = !view.show;
+      $("#show-tracks").setAttribute("aria-pressed", String(view.show));
+      for (const b of document.querySelectorAll(".views button")) b.setAttribute("aria-pressed", String(b.dataset.view === view.which));
+      shownWhich = "";
+    }
+    const toggleTracks = () => { view.show = !view.show; keepView(); paintView(); };
+    $("#show-tracks").addEventListener("click", toggleTracks);
+    for (const b of document.querySelectorAll(".views button")) {
+      b.addEventListener("click", () => { view.which = b.dataset.view; keepView(); paintView(); });
+    }
+
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const pct = (ms, span) => `${(ms / span) * 100}%`;
+
+    /** The ruler's marks: a labelled one at least every 90 px or so, four small ones between. */
+    function paintRuler(span) {
+      ruler.replaceChildren();
+      const width = ruler.clientWidth || 600;
+      const every = [50, 100, 250, 500, 1000, 2000, 5000].find((s) => (s / span) * width >= 90) || 10000;
+      const minor = every / 5;
+      for (let i = 0; i * minor <= span; i++) {
+        const ms = i * minor, major = i % 5 === 0;
+        const tick = el("div", `tick${major ? " major" : ""}`);
+        tick.style.left = pct(ms, span);
+        if (major) tick.append(el("span", "", ms === 0 ? "0 MS" : String(Math.round(ms))));
+        ruler.append(tick);
+      }
+    }
+
+    /** A sound's outline, as a filled shape mirrored about the middle (square-rooted, nearer how loud it sounds). */
+    function wave(peaks) {
+      const NS = "http://www.w3.org/2000/svg", n = peaks.length;
+      peaks = peaks.map(Math.sqrt);
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("viewBox", `0 0 ${n} 100`);
+      svg.setAttribute("preserveAspectRatio", "none");
+      const top = peaks.map((v, i) => `${i + 0.5},${50 - Math.max(1, v * 46)}`);
+      const bottom = peaks.map((v, i) => `${i + 0.5},${50 + Math.max(1, v * 46)}`).reverse();
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", `M0,50 L${top.join(" L")} L${n},50 L${bottom.join(" L")} Z`);
+      svg.append(path);
+      return svg;
+    }
+
+    /** One section (video or audio): names down the first column, lanes down the second, a playhead over the lanes. */
+    function section(label, items, kindOf, span) {
+      if (view.which === "both") rowsEl.append(el("div", "group-label", label));
+      const names = el("div", "names"), lanes = el("div", "lanes-wrap");
+      for (const item of items) {
+        const kind = kindOf(item), tall = kind === "sound" ? " tall" : "";
+        const name = el("div", `name${tall}`, item.label);
+        name.title = item.label;
+        names.append(name);
+        const lane = el("div", `lane${tall}`);
+        const block = el("div", `block ${kind}`);
+        block.style.left = pct(item.start, span);
+        block.style.width = pct(Math.max(item.length, 1), span);
+        block.title = `${item.label}: ${item.start} → ${item.start + item.length} MS (${item.length} MS)`;
+        if (kind === "sound" && item.peaks?.length) block.append(wave(item.peaks));
+        else block.append(el("span", "", `${item.length} MS`));
+        lane.append(block);
+        lanes.append(lane);
+      }
+      const ph = el("div", "playhead");
+      lanes.append(ph);
+      playheads.push(ph);
+      rowsEl.append(names, lanes);
+    }
+
+    function paintTracks(tl, span) {
+      rowsEl.replaceChildren();
+      playheads = [];
+      paintRuler(span);
+      if (!tl) {
+        rowsEl.append(el("div", "empty", "THIS PAGE HAS NO OPENING, SO THERE ARE NO TRACKS."));
+        return;
+      }
+      if (view.which !== "audio") section("VIDEO", tl.parts, (p) => (p.id === "frame" ? "frame" : p.id === "content" ? "content" : "step"), span);
+      if (view.which !== "video") {
+        if (tl.sounds.length) section("AUDIO", tl.sounds, () => "sound", span);
+        else rowsEl.append(el("div", "empty", "THE OPENING PLAYS SILENTLY."));
+      }
+    }
+
+    // Clicking or dragging on the ruler or a lane moves the opening there, as the scrubber does.
+    let dragOn = null;
+    const timeAt = (e, target) => {
+      const r = target.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * shownSpan;
+    };
+    tracksEl.addEventListener("pointerdown", (e) => {
+      const target = e.target.closest(".ruler, .lane");
+      const s = ready();
+      if (!target || !s || !shownSpan) return;
+      e.preventDefault();
+      dragOn = target;
+      target.setPointerCapture(e.pointerId);
+      state.wasPlaying = s.playing;
+      if (s.playing) state.clock.pause();
+      state.clock.seek(timeAt(e, target));
+    });
+    tracksEl.addEventListener("pointermove", (e) => {
+      if (dragOn && ready()) state.clock.seek(timeAt(e, dragOn));
+    });
+    const endDrag = () => {
+      if (!dragOn) return;
+      dragOn = null;
+      if (state.wasPlaying) state.clock?.play();
+    };
+    tracksEl.addEventListener("pointerup", endDrag);
+    tracksEl.addEventListener("pointercancel", endDrag);
+    addEventListener("resize", () => { shownWhich = ""; });
+
+    /** Keep the tracks in step with the page: rebuilt when its timeline changes, the playhead every frame. */
+    function paintTracksNow(s) {
+      if (!view.show || !s) return;
+      const tl = s.timeline ?? null;
+      const span = tl ? Math.max(1000, Math.round(tl.end)) + TAIL : 0;
+      if (tl !== shownTimeline || span !== shownSpan || view.which !== shownWhich) {
+        shownTimeline = tl;
+        shownSpan = span;
+        shownWhich = view.which;
+        paintTracks(tl, span || 1000);
+      }
+      if (s.t != null && shownSpan) for (const ph of playheads) ph.style.left = pct(Math.min(s.t, shownSpan), shownSpan);
+    }
+
+    paintView();
     paintSpeed();
     requestAnimationFrame(tick);
   </script>

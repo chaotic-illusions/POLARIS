@@ -1021,13 +1021,17 @@
    */
   function soundPlan(audio, steps) {
     const plan = { clips: [], ticks: [], tracks: [], end: 0 };
+    let parts = []; // the clips of the track being put together
     const clip = (buf, at, gain = 1, limited = false) => {
-      if (audio.ok && buf) plan.clips.push({ buf, at, gain, limited });
-      return buf ? at + buf.duration * 1000 : at;
+      if (!buf) return at;
+      if (audio.ok) plan.clips.push({ buf, at, gain, limited });
+      parts.push({ buf, at, gain });
+      return at + buf.duration * 1000;
     };
     const track = (id, label, start, end) => {
-      plan.tracks.push({ id, label, start: Math.round(start), length: Math.round(end - start) });
+      plan.tracks.push({ id, label, start: Math.round(start), length: Math.round(end - start), peaks: peaks(parts, start, end) });
       plan.end = Math.max(plan.end, end);
+      parts = [];
     };
     const B = sounds.buffers;
     if (audio.own) {
@@ -1052,6 +1056,26 @@
       if (buf) track(`step-${s.n}-sound`, `Step ${s.n}: ${s.name || fileName(s.sound)}`, 50 + s.at, clip(buf, 50 + s.at));
     }
     return plan;
+  }
+
+  /**
+   * A sound track's outline, for drawing it: its loudest point in each slice
+   * of time (about 10 ms each, at most 600), 0 to 1 of its loud parts.
+   */
+  function peaks(parts, start, end) {
+    const n = Math.max(16, Math.min(600, Math.round((end - start) / 10)));
+    const out = new Float32Array(n), slice = (end - start) / n;
+    for (const { buf, at, gain } of parts) {
+      const data = buf.getChannelData(0), rate = buf.sampleRate / 1000; // samples per ms
+      const stride = Math.max(1, Math.floor(rate * slice / 24)); // a couple of dozen looks per slice is plenty
+      for (let i = 0; i < data.length; i += stride) {
+        const k = Math.floor((at + i / rate - start) / slice);
+        if (k >= 0 && k < n) out[k] = Math.max(out[k], Math.abs(data[i]) * gain);
+      }
+    }
+    // Scaled to its loud parts, not its one loudest click, so the shape shows.
+    const top = [...out].sort((a, b) => a - b)[Math.floor(n * 0.95)] || Math.max(...out) || 1;
+    return Array.from(out, (v) => Math.round(Math.min(1, v / top) * 100) / 100);
   }
 
   /**

@@ -259,10 +259,10 @@
     },
   };
 
-  // Space, Home, L and the arrows reach the preview's controls when nothing on the page has focus.
+  // Space, Home, L, T and the arrows reach the preview's controls when nothing on the page has focus.
   addEventListener("keydown", (e) => {
     if (e.target !== document.body && e.target !== document.documentElement) return;
-    if (!/^( |Home|ArrowLeft|ArrowRight|l|L)$/.test(e.key)) return;
+    if (!/^( |Home|ArrowLeft|ArrowRight|l|L|t|T)$/.test(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
     e.preventDefault();
     host.key?.(e.key, e.shiftKey);
   });
