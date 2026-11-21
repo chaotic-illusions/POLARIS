@@ -2547,53 +2547,88 @@
     return wrap;
   }
 
-  /* ---- your sounds: button sounds kept in POLARIS (Preferences, Sounds) ---- */
+  /* ---- sounds: the built-in ones and those you add, kept in POLARIS (Preferences, Sounds) ---- */
 
-  const SOUNDS_KEY = "polaris:sounds";
-  const SOUND_MAX = 1024 * 1024; // click sounds are short; this keeps the store small
-  /** Your sounds: [{ id, name, file, data (base64) }]. */
-  function mySounds() {
+  /*
+   * Sounds you add are kept in the builder's database (IndexedDB), which has
+   * room for spoken pieces too, not only clicks. They're read once as the
+   * builder starts; until then (a moment) the lists show the built-in sounds.
+   */
+  const SOUND_MAX = 30 * 1024 * 1024;
+  const soundLib = { list: [], db: null }; // list: [{ id, name, file, type, blob }]
+  const soundDB = () => soundLib.db || (soundLib.db = new Promise((resolve, reject) => {
+    const req = indexedDB.open("polaris", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("sounds", { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+  const soundStore = async (mode, fn) => {
+    const db = await soundDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("sounds", mode);
+      const out = fn(tx.objectStore("sounds"));
+      tx.oncomplete = () => resolve(out?.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+  (async () => {
     try {
-      const list = JSON.parse(localStorage.getItem(SOUNDS_KEY));
-      return Array.isArray(list) ? list.filter((s) => s && [s.id, s.name, s.file, s.data].every((v) => typeof v === "string")) : [];
-    } catch {
-      return [];
+      // Sounds added before the database (kept in localStorage, up to 1 MB each) move into it.
+      const old = JSON.parse(localStorage.getItem("polaris:sounds") || "[]");
+      if (Array.isArray(old) && old.length) {
+        await soundStore("readwrite", (st) => {
+          for (const s of old) if (s?.id && s.data) st.put({ id: s.id, name: s.name, file: s.file, type: typeOf(s.file), blob: fromBase64(`sounds/${s.file}`, s.data) });
+        });
+        localStorage.removeItem("polaris:sounds");
+      }
+      soundLib.list = ((await soundStore("readonly", (st) => st.getAll())) || []).sort(byName);
+      renderInspector();
+      if (prefsDialog.open) renderSounds();
+    } catch (err) {
+      console.warn("POLARIS: your sounds could not be read", err);
     }
-  }
-  function keepMySounds(list) {
-    try {
-      localStorage.setItem(SOUNDS_KEY, JSON.stringify(list));
-      return true;
-    } catch {
-      toast("There isn't room to keep that sound. Remove one of yours, or use a shorter file.");
-      return false;
-    }
-  }
+  })();
   const mySoundURLs = new Map(); // id -> object URL, for playing it
-  const mySoundFile = (s) => fromBase64(`sounds/${s.file}`, s.data);
+  const mySoundFile = (s) => new File([s.blob], s.file, { type: s.type || typeOf(s.file) });
   const mySoundURL = (s) => {
-    if (!mySoundURLs.has(s.id)) mySoundURLs.set(s.id, URL.createObjectURL(mySoundFile(s)));
+    if (!mySoundURLs.has(s.id)) mySoundURLs.set(s.id, URL.createObjectURL(s.blob));
     return mySoundURLs.get(s.id);
   };
+  const stem = (file) => file.replace(/\.[^.]+$/, "");
 
-  /** A button's Sound list gets your sounds and the project's sound files after the built-in ones. */
+  /**
+   * Every sound, by name: the built-in ones and yours. Each: { name, note, url,
+   * value (what a button's Sound keeps), mine (yours, so it can be removed) }.
+   */
+  function allSounds() {
+    const builtIn = ["key", "tap", "chirp", "padd"].map((k) => ({
+      name: OPTION_NAMES.beep[k], note: k === "padd" ? "built in (trek-padd.js)" : `built in (${BEEPS[k].split("/").pop()})`,
+      url: k === "padd" ? "" : libURL(BEEPS[k]), value: k,
+    }));
+    const mine = soundLib.list.map((s) => ({ name: s.name, note: s.file, url: mySoundURL(s), value: `mine:${s.id}`, mine: s }));
+    return [...builtIn, ...mine].sort(byName);
+  }
+
+  /**
+   * A button's Sound list: None, then every sound by name, the project's own
+   * sound files among them (a sound of yours already in the project shows once).
+   */
   function beepChoices(select, current) {
-    const group = (label, items) => {
-      if (!items.length) return;
-      const g = document.createElement("optgroup");
-      g.label = label;
-      for (const [value, text] of items) g.append(new Option(text, value));
-      select.append(g);
-    };
+    select.replaceChildren(new Option(OPTION_NAMES.beep.none, "none"));
     const inProject = [...attached.keys()].filter(isSoundSrc);
-    group("Your sounds", mySounds().map((s) => [`mine:${s.id}`, s.name]));
-    group("In this project", inProject.map((src) => [src, src.slice("sounds/".length)]));
-    if (isSoundSrc(current) && !inProject.includes(current)) group("Missing", [[current, `${current.slice("sounds/".length)} (not in the project)`]]);
+    const files = new Set(inProject.map((src) => src.slice("sounds/".length).toLowerCase()));
+    const items = [
+      ...allSounds().filter((s) => !s.mine || !files.has(s.mine.file.toLowerCase())).map((s) => [s.value, s.name]),
+      ...inProject.map((src) => [src, stem(src.slice("sounds/".length))]),
+    ].sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: "base", numeric: true }));
+    for (const [value, text] of items) select.add(new Option(text, value));
+    if (isSoundSrc(current) && !inProject.includes(current)) select.add(new Option(`${stem(current.slice("sounds/".length))} (not in the project)`, current));
   }
   /** A choice from the Sound list as the button keeps it: one of your sounds becomes a sound file of the project. */
   async function beepFromLibrary(value) {
     if (!value.startsWith("mine:")) return value;
-    const s = mySounds().find((x) => `mine:${x.id}` === value);
+    const s = soundLib.list.find((x) => `mine:${x.id}` === value);
     if (!s) return null;
     const file = mySoundFile(s);
     const src = await imageSrcFor(file, "sounds");
@@ -2601,63 +2636,52 @@
     return src;
   }
 
-  /** Preferences, Sounds: the built-in sounds and yours, each to play; add and remove yours. */
+  /** Preferences, Sounds: every sound, by name, each to play; yours to remove. */
   function renderSounds() {
     const box = $("#prefs-sounds");
     box.replaceChildren();
-    const row = (name, note, url, remove) => {
+    for (const s of allSounds()) {
       const r = document.createElement("div");
       r.className = "prefs-sound";
       const n = document.createElement("span");
       n.className = "nm";
-      n.textContent = name;
-      const s = document.createElement("small");
-      s.textContent = note;
-      r.append(n, s, actionButton("Play", "blue", () => window.TrekPadd?.audition?.(url).catch(() => toast(`Could not play ${name}`))));
-      r.append(remove ? actionButton("Remove", "rose", remove) : document.createElement("span")); // the Play buttons line up
-      return r;
-    };
-    const head = (text) => {
-      const h = document.createElement("h3");
-      h.textContent = text;
-      return h;
-    };
-    box.append(head("Built in"));
-    for (const k of ["key", "tap", "chirp", "padd"]) box.append(row(OPTION_NAMES.beep[k], k === "padd" ? "trek-padd.js" : BEEPS[k].split("/").pop(), k === "padd" ? "" : libURL(BEEPS[k])));
-    const mine = mySounds();
-    box.append(head("Yours"));
-    if (!mine.length) {
-      const p = document.createElement("p");
-      p.className = "note";
-      p.textContent = "None yet. Add sound files (MP3, WAV, OGG or M4A, up to 1 MB each).";
-      box.append(p);
-    }
-    for (const s of mine) {
-      box.append(row(s.name, s.file, mySoundURL(s), () => {
-        keepMySounds(mySounds().filter((x) => x.id !== s.id));
-        URL.revokeObjectURL(mySoundURLs.get(s.id));
-        mySoundURLs.delete(s.id);
+      n.textContent = s.name;
+      const note = document.createElement("small");
+      note.textContent = s.note;
+      r.append(n, note, actionButton("Play", "blue", () => window.TrekPadd?.audition?.(s.url).catch(() => toast(`Could not play ${s.name}`))));
+      // Yours can be removed (buttons using it keep their copy); the built-in ones come with POLARIS.
+      r.append(s.mine ? actionButton("Remove", "rose", async () => {
+        await soundStore("readwrite", (st) => st.delete(s.mine.id)).catch(() => {});
+        soundLib.list = soundLib.list.filter((x) => x.id !== s.mine.id);
+        URL.revokeObjectURL(mySoundURLs.get(s.mine.id));
+        mySoundURLs.delete(s.mine.id);
         renderSounds();
-        renderInspector(); // the Sound lists drop it (buttons using it keep their copy)
-      }));
+        renderInspector();
+      }) : document.createElement("span"));
+      box.append(r);
     }
   }
   $("#prefs-add-sound").addEventListener("click", () => $("#prefs-sound-file").click());
   $("#prefs-sound-file").addEventListener("change", async (e) => {
-    const list = mySounds();
+    const added = [];
     for (const file of e.target.files) {
       if (file.size > SOUND_MAX) {
-        toast(`${file.name} is over 1 MB: button sounds should be short`);
+        toast(`${file.name} is over 30 MB: try a shorter clip, or MP3`);
         continue;
       }
-      const dot = file.name.lastIndexOf(".");
-      list.push({ id: Math.random().toString(36).slice(2, 10), name: dot > 0 ? file.name.slice(0, dot) : file.name, file: file.name, data: await blobBase64(file) });
+      added.push({ id: Math.random().toString(36).slice(2, 10), name: stem(file.name), file: file.name, type: file.type || typeOf(file.name), blob: file });
     }
     e.target.value = "";
-    if (keepMySounds(list)) {
-      renderSounds();
-      renderInspector();
+    if (!added.length) return;
+    try {
+      await soundStore("readwrite", (st) => { for (const s of added) st.put(s); });
+    } catch (err) {
+      toast(`Could not keep the sound: ${err?.message || err}`);
+      return;
     }
+    soundLib.list = [...soundLib.list, ...added].sort(byName);
+    renderSounds();
+    renderInspector();
   });
 
   /** A row of color swatches. With mark, the ring moves to a picked swatch (for fields whose panel isn't rebuilt). */
