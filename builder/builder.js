@@ -2636,28 +2636,33 @@
     return src;
   }
 
-  /** Preferences, Sounds: every sound, by name, each to play; yours to remove. */
+  /** Preferences, Sounds: every sound, by name, a tile each; click one to hear it. Yours can be removed. */
   function renderSounds() {
     const box = $("#prefs-sounds");
     box.replaceChildren();
     for (const s of allSounds()) {
       const r = document.createElement("div");
       r.className = "prefs-sound";
-      const n = document.createElement("span");
-      n.className = "nm";
-      n.textContent = s.name;
-      const note = document.createElement("small");
-      note.textContent = s.note;
-      r.append(n, note, actionButton("Play", "blue", () => window.TrekPadd?.audition?.(s.url).catch(() => toast(`Could not play ${s.name}`))));
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "snd";
+      play.textContent = s.name;
+      play.title = `Play ${s.name} (${s.note})`;
+      play.addEventListener("click", () => {
+        play.classList.add("playing");
+        setTimeout(() => play.classList.remove("playing"), 400);
+        window.TrekPadd?.audition?.(s.url).catch(() => toast(`Could not play ${s.name}`));
+      });
+      r.append(play);
       // Yours can be removed (buttons using it keep their copy); the built-in ones come with POLARIS.
-      r.append(s.mine ? actionButton("Remove", "rose", async () => {
+      if (s.mine) r.append(actionButton("Remove", "rose", async () => {
         await soundStore("readwrite", (st) => st.delete(s.mine.id)).catch(() => {});
         soundLib.list = soundLib.list.filter((x) => x.id !== s.mine.id);
         URL.revokeObjectURL(mySoundURLs.get(s.mine.id));
         mySoundURLs.delete(s.mine.id);
         renderSounds();
         renderInspector();
-      }) : document.createElement("span"));
+      }));
       box.append(r);
     }
   }
