@@ -717,7 +717,7 @@ fn content_type(path: &str) -> &'static str {
 /* ---- the font ---- */
 
 /// Folders the font is looked for in: the app's data folder, a "fonts" folder
-/// beside the program, and (in development) the project's own fonts folder.
+/// beside the program, (in development) the project's own fonts folder, and Windows' own (installed fonts).
 fn font_dirs(app: &AppHandle) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(d) = app.path().app_data_dir() {
@@ -728,6 +728,13 @@ fn font_dirs(app: &AppHandle) -> Vec<PathBuf> {
     }
     if cfg!(debug_assertions) {
         dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fonts"));
+    }
+    // Installed in Windows: for this user, then for everyone.
+    if let Some(d) = std::env::var_os("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(d).join("Microsoft").join("Windows").join("Fonts"));
+    }
+    if let Some(d) = std::env::var_os("WINDIR") {
+        dirs.push(PathBuf::from(d).join("Fonts"));
     }
     dirs
 }
